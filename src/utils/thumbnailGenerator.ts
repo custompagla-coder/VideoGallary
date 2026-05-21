@@ -1,11 +1,10 @@
 /**
- * Generates a JPEG thumbnail from a video file by:
- * 1. Loading the video into a hidden <video> element
- * 2. Seeking to 1 second (to avoid black/empty frames)
- * 3. Drawing the frame onto a <canvas>
- * 4. Exporting the canvas as a JPEG File object
+ * Generates a JPEG thumbnail AND extracts the duration from a video file.
+ * Uses an invisible <video> + <canvas> — no FFmpeg needed.
  */
-export async function generateThumbnail(videoFile: File): Promise<File> {
+export async function generateThumbnailAndDuration(
+  videoFile: File
+): Promise<{ thumbnail: File; duration: number }> {
   return new Promise((resolve, reject) => {
     const video = document.createElement('video');
     const canvas = document.createElement('canvas');
@@ -23,11 +22,11 @@ export async function generateThumbnail(videoFile: File): Promise<File> {
     const objectUrl = URL.createObjectURL(videoFile);
 
     video.onloadedmetadata = () => {
-      // Seek to 1 second, or 10% of duration if the video is short
       video.currentTime = Math.min(1.0, video.duration * 0.1);
     };
 
     video.onseeked = () => {
+      const duration = Math.round(video.duration);
       canvas.width = video.videoWidth;
       canvas.height = video.videoHeight;
       ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
@@ -39,10 +38,8 @@ export async function generateThumbnail(videoFile: File): Promise<File> {
             reject(new Error('Failed to generate thumbnail blob'));
             return;
           }
-          const thumbnailFile = new File([blob], 'thumbnail.jpg', {
-            type: 'image/jpeg',
-          });
-          resolve(thumbnailFile);
+          const thumbnail = new File([blob], 'thumbnail.jpg', { type: 'image/jpeg' });
+          resolve({ thumbnail, duration });
         },
         'image/jpeg',
         0.85
@@ -56,4 +53,16 @@ export async function generateThumbnail(videoFile: File): Promise<File> {
 
     video.src = objectUrl;
   });
+}
+
+/** Format seconds → "m:ss" or "h:mm:ss" */
+export function formatDuration(seconds: number): string {
+  if (!seconds || seconds <= 0) return '';
+  const h = Math.floor(seconds / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  const s = Math.floor(seconds % 60);
+  if (h > 0) {
+    return `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+  }
+  return `${m}:${String(s).padStart(2, '0')}`;
 }

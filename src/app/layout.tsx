@@ -1,6 +1,9 @@
 import type { Metadata } from 'next';
 import { Inter } from 'next/font/google';
 import './globals.css';
+import { ThemeProvider } from '@/context/ThemeContext';
+import { AuthProvider } from '@/context/AuthContext';
+import { Toaster } from 'react-hot-toast';
 
 const inter = Inter({
   subsets: ['latin'],
@@ -20,14 +23,26 @@ export const metadata: Metadata = {
   },
 };
 
-export default function RootLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
+export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className={inter.variable}>
-      <body className="antialiased font-sans">{children}</body>
+    <html lang="en" className={inter.variable} data-theme="dark">
+      <body className="antialiased font-sans">
+        <AuthProvider>
+          <ThemeProvider>
+            <Toaster 
+              position="top-right" 
+              toastOptions={{ 
+                style: { 
+                  background: 'var(--bg-card)', 
+                  color: 'var(--text-primary)', 
+                  border: '1px solid var(--border)' 
+                } 
+              }} 
+            />
+            {children}
+          </ThemeProvider>
+        </AuthProvider>
+      </body>
     </html>
   );
 }
