@@ -10,8 +10,8 @@ type UploadStep = 'idle' | 'generating' | 'uploading-video' | 'uploading-thumbna
 
 const stepLabels: Record<UploadStep, string> = {
   idle: 'Upload Video', generating: 'Generating Thumbnail...',
-  'uploading-video': 'Uploading Video to Catbox...',
-  'uploading-thumbnail': 'Uploading Thumbnail to Catbox...',
+  'uploading-video': 'Uploading Video to Storage...',
+  'uploading-thumbnail': 'Uploading Thumbnail to Storage...',
   saving: 'Saving to Database...', done: 'Upload Complete!',
 };
 
