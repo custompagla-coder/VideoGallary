@@ -10,8 +10,8 @@ type UploadStep = 'idle' | 'generating' | 'uploading-video' | 'uploading-thumbna
 
 const stepLabels: Record<UploadStep, string> = {
   idle: 'Upload Video', generating: 'Generating Thumbnail...',
-  'uploading-video': 'Uploading Video to Storage...',
-  'uploading-thumbnail': 'Uploading Thumbnail to Storage...',
+  'uploading-video': 'Uploading Video to Catbox...',
+  'uploading-thumbnail': 'Uploading Thumbnail to Catbox...',
   saving: 'Saving to Database...', done: 'Upload Complete!',
 };
 
@@ -63,6 +63,15 @@ export default function UploadForm({ onClose, onSuccess }: UploadFormProps) {
     setTagInput('');
   };
 
+  async function uploadToCatbox(file: File): Promise<string> {
+    const formData = new FormData();
+    formData.append('file', file);
+    const res = await fetch('/api/upload', { method: 'POST', body: formData });
+    const data = await res.json();
+    if (!res.ok || !data.url) throw new Error(data.error || 'Upload failed');
+    return data.url;
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!videoFile) return toast.error('Please select a video file.');
@@ -71,46 +80,13 @@ export default function UploadForm({ onClose, onSuccess }: UploadFormProps) {
       setStep('generating');
       const { thumbnail, duration } = await generateThumbnailAndDuration(videoFile);
       
-      // 1. Upload Video to Supabase Storage
       setStep('uploading-video');
-      const videoExt = videoFile.name.split('.').pop() || 'mp4';
-      const videoName = `${Date.now()}-${Math.random().toString(36).substring(2, 15)}.${videoExt}`;
+      const videoUrl = await uploadToCatbox(videoFile);
       
-      const { error: vErr } = await supabase.storage
-        .from('videos')
-        .upload(videoName, videoFile, {
-          cacheControl: '3600',
-          upsert: false
-        });
-      
-      if (vErr) {
-        throw new Error(`Video upload failed: ${vErr.message}. Make sure you ran the Supabase SQL Storage script to create the 'videos' bucket!`);
-      }
-      
-      const { data: { publicUrl: videoUrl } } = supabase.storage
-        .from('videos')
-        .getPublicUrl(videoName);
-
-      // 2. Upload Thumbnail to Supabase Storage
       setStep('uploading-thumbnail');
-      const thumbName = `${Date.now()}-${Math.random().toString(36).substring(2, 15)}.jpg`;
-      
-      const { error: tErr } = await supabase.storage
-        .from('videos')
-        .upload(thumbName, thumbnail, {
-          cacheControl: '3600',
-          upsert: false
-        });
-        
-      if (tErr) {
-        throw new Error(`Thumbnail upload failed: ${tErr.message}`);
-      }
+      const thumbnailUrl = await uploadToCatbox(thumbnail);
 
-      const { data: { publicUrl: thumbnailUrl } } = supabase.storage
-        .from('videos')
-        .getPublicUrl(thumbName);
-
-      // 3. Save to Database
+      // Save to Database
       setStep('saving');
       const { error } = await supabase.from('videos').insert({
         title: title.trim(), video_url: videoUrl, thumbnail_url: thumbnailUrl,
