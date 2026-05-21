@@ -39,18 +39,60 @@ export type Comment = {
 
 let _client: SupabaseClient | null = null;
 
-function getClient(): SupabaseClient {
+function getClient(): SupabaseClient | null {
   if (!_client) {
     const url = process.env.NEXT_PUBLIC_SUPABASE_URL ?? '';
     const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? '';
-    if (!url || !key) throw new Error('Missing Supabase environment variables.');
-    _client = createClient(url, key);
+    if (!url || !key) {
+      console.warn('Missing Supabase environment variables.');
+      return null;
+    }
+    try {
+      _client = createClient(url, key);
+    } catch (e) {
+      console.error('Failed to create Supabase client:', e);
+      return null;
+    }
   }
   return _client;
 }
 
+// A recursive proxy that can swallow any chained method calls and eventually return standard Supabase-like shapes or promises.
+const createDummyProxy = (path: string[] = []): any => {
+  return new Proxy(() => {}, {
+    get(_target, prop: string) {
+      if (prop === 'then') {
+        // When the proxy is awaited (Promise-like), resolve it to a mock response
+        const isSelect = path.includes('select') || path.includes('from');
+        const errorMsg = 'Missing Supabase environment variables. Please check NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY in your Vercel settings.';
+        return (resolve: any) => resolve({
+          data: isSelect ? [] : null,
+          error: { message: errorMsg }
+        });
+      }
+      if (prop === 'auth') {
+        return {
+          getSession: () => Promise.resolve({ data: { session: null }, error: null }),
+          onAuthStateChange: () => ({ data: { subscription: { unsubscribe: () => {} } } }),
+          signInWithPassword: () => Promise.reject(new Error('Supabase not configured')),
+          signUp: () => Promise.reject(new Error('Supabase not configured')),
+          signOut: () => Promise.resolve({ error: null }),
+        };
+      }
+      return createDummyProxy([...path, prop]);
+    },
+    apply(_target, _thisArg, _argumentsList) {
+      return createDummyProxy(path);
+    }
+  });
+};
+
 export const supabase = new Proxy({} as SupabaseClient, {
   get(_target, prop: string) {
-    return (getClient() as unknown as Record<string, unknown>)[prop];
+    const client = getClient();
+    if (!client) {
+      return createDummyProxy([prop]);
+    }
+    return (client as unknown as Record<string, unknown>)[prop];
   },
 });

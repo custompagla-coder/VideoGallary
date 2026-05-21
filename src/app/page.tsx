@@ -87,6 +87,13 @@ export default function HomePage() {
 
       <Navbar onRefresh={fetchData} onSearch={setSearch} searchValue={search} />
 
+      {/* Vercel Environment Variables Warning Banner */}
+      {(!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) && (
+        <div className="bg-yellow-500/10 border-b border-yellow-500/20 text-yellow-400 py-3 px-4 text-center text-sm font-medium">
+          ⚠️ <span className="font-semibold text-white">Missing Supabase credentials:</span> Please add <code className="bg-black/30 px-1.5 py-0.5 rounded text-fuchsia-300">NEXT_PUBLIC_SUPABASE_URL</code> and <code className="bg-black/30 px-1.5 py-0.5 rounded text-fuchsia-300">NEXT_PUBLIC_SUPABASE_ANON_KEY</code> to your Vercel Environment Variables to load videos.
+        </div>
+      )}
+
       {/* Category & Sorting chips */}
       <div className="sticky top-16 z-30" style={{ background: 'var(--bg-base)', borderBottom: '1px solid var(--border-subtle)' }}>
         <div className="max-w-[1500px] mx-auto px-4 sm:px-6 flex items-center gap-2 py-3 overflow-x-auto scrollbar-none">
