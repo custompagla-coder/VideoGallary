@@ -27,7 +27,9 @@ interface UploadFormProps {
 
 export default function UploadForm({ onClose, onSuccess }: UploadFormProps) {
   const [title, setTitle] = useState('');
-  const [videoFile, setVideoFile] = useState<File | null>(null);
+  const [videoFiles, setVideoFiles] = useState<File[]>([]);
+  const [currentFileIndex, setCurrentFileIndex] = useState(0);
+  const [currentFileName, setCurrentFileName] = useState('');
   const [tagInput, setTagInput] = useState('');
   const [tags, setTags] = useState<string[]>([]);
   const [categoryId, setCategoryId] = useState('');
@@ -43,18 +45,36 @@ export default function UploadForm({ onClose, onSuccess }: UploadFormProps) {
     });
   }, []);
 
-  const handleFile = (file: File) => {
-    if (!file.type.startsWith('video/')) { toast.error('Please select a valid video file.'); return; }
-    setVideoFile(file);
+  const handleFiles = (files: FileList | null) => {
+    if (!files) return;
+    const list: File[] = [];
+    for (let i = 0; i < files.length; i++) {
+      const f = files[i];
+      if (f.type.startsWith('video/')) {
+        list.push(f);
+      } else {
+        toast.error(`"${f.name}" is not a valid video file and was skipped.`);
+      }
+    }
+    if (list.length === 0) return;
+    setVideoFiles(list);
+    
+    // Auto-populate title if single file
+    if (list.length === 1) {
+      const baseName = list[0].name.substring(0, list[0].name.lastIndexOf('.')) || list[0].name;
+      setTitle(baseName);
+    } else {
+      setTitle(''); // Hides title input
+    }
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]; if (file) handleFile(file);
+    handleFiles(e.target.files);
   };
 
   const handleDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault(); setIsDragging(false);
-    const file = e.dataTransfer.files?.[0]; if (file) handleFile(file);
+    handleFiles(e.dataTransfer.files);
   }, []);
 
   const addTag = () => {
@@ -74,29 +94,46 @@ export default function UploadForm({ onClose, onSuccess }: UploadFormProps) {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!videoFile) return toast.error('Please select a video file.');
-    if (!title.trim()) return toast.error('Please enter a title.');
+    if (videoFiles.length === 0) return toast.error('Please select at least one video file.');
+    if (videoFiles.length === 1 && !title.trim()) return toast.error('Please enter a title.');
+    
     try {
-      setStep('generating');
-      const { thumbnail, duration } = await generateThumbnailAndDuration(videoFile);
-      
-      setStep('uploading-video');
-      const videoUrl = await uploadToCatbox(videoFile);
-      
-      setStep('uploading-thumbnail');
-      const thumbnailUrl = await uploadToCatbox(thumbnail);
+      for (let i = 0; i < videoFiles.length; i++) {
+        const file = videoFiles[i];
+        setCurrentFileIndex(i);
+        setCurrentFileName(file.name);
+        
+        // Auto-generate title from filename if bulk uploading
+        const videoTitle = videoFiles.length === 1 
+          ? title.trim() 
+          : (file.name.substring(0, file.name.lastIndexOf('.')) || file.name);
 
-      // Save to Database
-      setStep('saving');
-      const { error } = await supabase.from('videos').insert({
-        title: title.trim(), video_url: videoUrl, thumbnail_url: thumbnailUrl,
-        tags, duration, views: 0, likes: 0,
-        category_id: categoryId || null,
-      });
-      if (error) throw new Error(error.message);
+        setStep('generating');
+        const { thumbnail, duration } = await generateThumbnailAndDuration(file);
+        
+        setStep('uploading-video');
+        const videoUrl = await uploadToCatbox(file);
+        
+        setStep('uploading-thumbnail');
+        const thumbnailUrl = await uploadToCatbox(thumbnail);
+
+        // Save to Database
+        setStep('saving');
+        const { error } = await supabase.from('videos').insert({
+          title: videoTitle,
+          video_url: videoUrl,
+          thumbnail_url: thumbnailUrl,
+          tags,
+          duration,
+          views: 0,
+          likes: 0,
+          category_id: categoryId || null,
+        });
+        if (error) throw new Error(error.message);
+      }
       
       setStep('done');
-      toast.success('Video uploaded successfully!');
+      toast.success(videoFiles.length === 1 ? 'Video uploaded successfully!' : 'All videos uploaded successfully!');
       onSuccess();
       setTimeout(onClose, 1200);
     } catch (err) {
@@ -104,6 +141,13 @@ export default function UploadForm({ onClose, onSuccess }: UploadFormProps) {
       setStep('idle');
     }
   }
+
+  const getProgressLabel = () => {
+    if (videoFiles.length > 1) {
+      return `[Video ${currentFileIndex + 1}/${videoFiles.length}] ${stepLabels[step]}`;
+    }
+    return stepLabels[step];
+  };
 
   const selectedCategory = categories.find(c => c.id === categoryId);
 
@@ -125,14 +169,20 @@ export default function UploadForm({ onClose, onSuccess }: UploadFormProps) {
 
         <form onSubmit={handleSubmit} className="p-6 space-y-4 overflow-y-auto max-h-[75vh]">
           {/* Title */}
-          <div className="space-y-1.5">
-            <label className="text-xs font-medium" style={{ color: 'var(--text-secondary)' }}>Video Title *</label>
-            <input id="video-title" type="text" value={title} onChange={e => setTitle(e.target.value)}
-              placeholder="Enter a descriptive title..." disabled={isLoading}
-              className="w-full px-4 py-2.5 rounded-xl text-sm border focus:outline-none focus:ring-2 focus:ring-violet-500/50 transition-all disabled:opacity-50"
-              style={{ background: 'var(--bg-input)', borderColor: 'var(--border)', color: 'var(--text-primary)' }}
-            />
-          </div>
+          {videoFiles.length <= 1 ? (
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium" style={{ color: 'var(--text-secondary)' }}>Video Title *</label>
+              <input id="video-title" type="text" value={title} onChange={e => setTitle(e.target.value)}
+                placeholder="Enter a descriptive title..." disabled={isLoading}
+                className="w-full px-4 py-2.5 rounded-xl text-sm border focus:outline-none focus:ring-2 focus:ring-violet-500/50 transition-all disabled:opacity-50"
+                style={{ background: 'var(--bg-input)', borderColor: 'var(--border)', color: 'var(--text-primary)' }}
+              />
+            </div>
+          ) : (
+            <div className="rounded-xl px-4 py-3 bg-violet-600/10 border border-violet-600/20 text-xs text-violet-300">
+              ℹ️ Titles for multiple files will automatically default to their file names (you can edit them later as an admin).
+            </div>
+          )}
 
           {/* Category */}
           <div className="space-y-1.5">
@@ -188,7 +238,7 @@ export default function UploadForm({ onClose, onSuccess }: UploadFormProps) {
 
           {/* Drag & Drop zone */}
           <div className="space-y-1.5">
-            <label className="text-xs font-medium" style={{ color: 'var(--text-secondary)' }}>Video File *</label>
+            <label className="text-xs font-medium" style={{ color: 'var(--text-secondary)' }}>Video Files *</label>
             <div
               onClick={() => !isLoading && fileInputRef.current?.click()}
               onDrop={handleDrop}
@@ -196,21 +246,35 @@ export default function UploadForm({ onClose, onSuccess }: UploadFormProps) {
               onDragLeave={() => setIsDragging(false)}
               className={`relative border-2 border-dashed rounded-xl p-6 text-center cursor-pointer transition-all ${
                 isDragging ? 'border-violet-400 bg-violet-500/10 scale-[1.02]' :
-                videoFile ? 'border-violet-500/50 bg-violet-500/5' : 'border-white/10 hover:border-violet-500/30'
+                videoFiles.length > 0 ? 'border-violet-500/50 bg-violet-500/5' : 'border-white/10 hover:border-violet-500/30'
               } ${isLoading ? 'opacity-50 cursor-not-allowed' : ''}`}
             >
-              <input ref={fileInputRef} type="file" accept="video/mp4,video/x-m4v,video/*" onChange={handleFileChange} disabled={isLoading} className="sr-only" id="video-file-input" />
-              {videoFile ? (
-                <div className="space-y-1">
+              <input ref={fileInputRef} type="file" accept="video/mp4,video/x-m4v,video/*" multiple onChange={handleFileChange} disabled={isLoading} className="sr-only" id="video-file-input" />
+              {videoFiles.length > 0 ? (
+                <div className="space-y-2">
                   <div className="w-10 h-10 mx-auto rounded-xl bg-violet-600/20 flex items-center justify-center"><Film className="w-5 h-5 text-violet-400" /></div>
-                  <p className="text-sm font-medium text-violet-300 truncate max-w-xs mx-auto">{videoFile.name}</p>
-                  <p className="text-xs" style={{ color: 'var(--text-muted)' }}>{(videoFile.size / (1024 * 1024)).toFixed(1)} MB · Click or drag to change</p>
+                  {videoFiles.length === 1 ? (
+                    <>
+                      <p className="text-sm font-medium text-violet-300 truncate max-w-xs mx-auto">{videoFiles[0].name}</p>
+                      <p className="text-xs" style={{ color: 'var(--text-muted)' }}>{(videoFiles[0].size / (1024 * 1024)).toFixed(1)} MB · Click or drag to change</p>
+                    </>
+                  ) : (
+                    <>
+                      <p className="text-sm font-semibold text-violet-300">{videoFiles.length} videos selected</p>
+                      <div className="text-xs space-y-1 text-left max-h-24 overflow-y-auto px-2 py-1 rounded bg-black/20 max-w-xs mx-auto scrollbar-thin" style={{ color: 'var(--text-muted)' }}>
+                        {videoFiles.map((file, idx) => (
+                          <div key={idx} className="truncate">• {file.name} ({(file.size / (1024 * 1024)).toFixed(1)} MB)</div>
+                        ))}
+                      </div>
+                      <p className="text-[10px]" style={{ color: 'var(--text-muted)' }}>Click or drag to change files</p>
+                    </>
+                  )}
                 </div>
               ) : (
                 <div className="space-y-2">
                   <div className="w-10 h-10 mx-auto rounded-xl flex items-center justify-center" style={{ background: 'var(--bg-hover)' }}><Upload className="w-5 h-5" style={{ color: 'var(--text-secondary)' }} /></div>
                   <p className="text-sm" style={{ color: 'var(--text-secondary)' }}><span className="text-violet-400 font-medium">Click to select</span> or drag & drop</p>
-                  <p className="text-xs" style={{ color: 'var(--text-muted)' }}>MP4 and other video formats · Max 200 MB</p>
+                  <p className="text-xs" style={{ color: 'var(--text-muted)' }}>MP4 and other formats · Supports multiple files · Max 200 MB</p>
                 </div>
               )}
             </div>
@@ -221,7 +285,7 @@ export default function UploadForm({ onClose, onSuccess }: UploadFormProps) {
             <div className="rounded-xl px-4 py-3 bg-violet-500/10 border border-violet-500/20">
               <div className="flex items-center gap-3">
                 <Loader2 className="w-4 h-4 text-violet-400 animate-spin shrink-0" />
-                <p className="text-sm text-violet-300 font-medium">{stepLabels[step]}</p>
+                <p className="text-sm text-violet-300 font-medium">{getProgressLabel()}</p>
               </div>
               <div className="mt-3 h-1 rounded-full overflow-hidden" style={{ background: 'var(--bg-hover)' }}>
                 <div className="h-full bg-gradient-to-r from-violet-600 to-fuchsia-500 rounded-full transition-all duration-500" style={{ width: `${stepProgress[step]}%` }} />
@@ -230,10 +294,10 @@ export default function UploadForm({ onClose, onSuccess }: UploadFormProps) {
           )}
 
           <button
-            type="submit" disabled={isLoading || !videoFile || !title.trim()}
+            type="submit" disabled={isLoading || videoFiles.length === 0 || (videoFiles.length === 1 && !title.trim())}
             className="w-full py-3 px-6 rounded-xl font-semibold text-sm transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed bg-gradient-to-r from-violet-600 to-fuchsia-600 hover:from-violet-500 hover:to-fuchsia-500 text-white shadow-lg shadow-violet-500/20"
           >
-            {isLoading ? <><Loader2 className="w-4 h-4 animate-spin" />{stepLabels[step]}</> : <><Upload className="w-4 h-4" />Upload Video</>}
+            {isLoading ? <><Loader2 className="w-4 h-4 animate-spin" />{getProgressLabel()}</> : <><Upload className="w-4 h-4" />{videoFiles.length > 1 ? `Upload ${videoFiles.length} Videos` : 'Upload Video'}</>}
           </button>
         </form>
       </div>

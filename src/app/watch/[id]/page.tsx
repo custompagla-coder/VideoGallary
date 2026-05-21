@@ -8,6 +8,7 @@ import {
   ArrowLeft, ThumbsUp, Share2, MoreHorizontal,
   Eye, Calendar, Tv2, Trash2, Pencil, Check, X, Shield,
   Play, Pause, Volume2, VolumeX, Maximize, Minimize, RotateCcw, RotateCw,
+  Loader2, ChevronDown,
 } from 'lucide-react';
 import { supabase, Video, Category } from '@/lib/supabase';
 import Navbar from '@/components/Navbar';
@@ -70,9 +71,10 @@ export default function WatchPage() {
   const [showShare, setShowShare] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deleting, setDeleting] = useState(false);
-  const [editingTitle, setEditingTitle] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
   const [titleDraft, setTitleDraft] = useState('');
-  const [savingTitle, setSavingTitle] = useState(false);
+  const [categoryDraft, setCategoryDraft] = useState('');
+  const [savingDetails, setSavingDetails] = useState(false);
   const [activeCategorySlug, setActiveCategorySlug] = useState('all');
   const [sortBy, setSortBy] = useState<'newest' | 'views' | 'likes'>('newest');
 
@@ -218,7 +220,12 @@ export default function WatchPage() {
         supabase.from('videos').select('*, category:categories(id,name,slug,color)').order('created_at', { ascending: false }),
         supabase.from('categories').select('*').order('name'),
       ]);
-      if (vid) { setVideo(vid); setLocalLikes(vid.likes ?? 0); setTitleDraft(vid.title); }
+      if (vid) {
+        setVideo(vid);
+        setLocalLikes(vid.likes ?? 0);
+        setTitleDraft(vid.title);
+        setCategoryDraft(vid.category_id || '');
+      }
       setRelated((all ?? []).filter((v: Video) => v.id !== id));
       setCategories(cats || []);
     } finally {
@@ -250,8 +257,8 @@ export default function WatchPage() {
   }, [related, activeCategorySlug, sortBy]);
 
   useEffect(() => {
-    if (editingTitle) titleInputRef.current?.focus();
-  }, [editingTitle]);
+    if (isEditing) titleInputRef.current?.focus();
+  }, [isEditing]);
 
   // View counter — once per page load
   useEffect(() => {
@@ -317,19 +324,45 @@ export default function WatchPage() {
     }
   }
 
-  async function handleSaveTitle() {
-    if (!titleDraft.trim() || titleDraft === video?.title) { setEditingTitle(false); return; }
-    setSavingTitle(true);
+  async function handleSaveDetails() {
+    const trimmedTitle = titleDraft.trim();
+    if (!trimmedTitle) {
+      toast.error('Title cannot be empty');
+      return;
+    }
+    setSavingDetails(true);
     try {
-      const { error } = await supabase.from('videos').update({ title: titleDraft.trim() }).eq('id', id);
+      const catId = categoryDraft || null;
+      const { error } = await supabase
+        .from('videos')
+        .update({
+          title: trimmedTitle,
+          category_id: catId
+        })
+        .eq('id', id);
       if (error) throw new Error(error.message);
-      setVideo(prev => prev ? { ...prev, title: titleDraft.trim() } : prev);
-      toast.success('Title updated!');
-      setEditingTitle(false);
+
+      // Re-fetch the updated video to get the joined category object
+      const { data: updatedVid, error: fetchError } = await supabase
+        .from('videos')
+        .select('*, category:categories(id,name,slug,color)')
+        .eq('id', id)
+        .single();
+      
+      if (fetchError) throw new Error(fetchError.message);
+      
+      if (updatedVid) {
+        setVideo(updatedVid);
+        setTitleDraft(updatedVid.title);
+        setCategoryDraft(updatedVid.category_id || '');
+      }
+      
+      toast.success('Video details updated!');
+      setIsEditing(false);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Update failed.');
     } finally {
-      setSavingTitle(false);
+      setSavingDetails(false);
     }
   }
 
@@ -542,46 +575,107 @@ export default function WatchPage() {
             </div>
           </div>
 
-          {/* Category + title */}
-          {video.category && (
-            <div className="flex items-center gap-2 mt-4">
-              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold text-white" style={{ background: video.category.color }}>
-                {video.category.name}
-              </span>
-            </div>
-          )}
-
-          {/* Title row */}
-          <div className="flex items-start gap-2 mt-2 mb-1">
-            {editingTitle && isAdmin ? (
-              <div className="flex-1 flex items-center gap-2">
+          {/* Admin Edit Block or Normal Title/Category block */}
+          {isEditing && isAdmin ? (
+            <div className="mt-4 p-4 rounded-xl space-y-3.5" style={{ background: 'var(--bg-card)', border: '1px solid var(--border)' }}>
+              <div className="flex items-center gap-2 text-xs font-semibold text-violet-400">
+                <Shield className="w-3.5 h-3.5" />
+                <span>Admin: Edit Video Details</span>
+              </div>
+              
+              {/* Title Input */}
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium" style={{ color: 'var(--text-secondary)' }}>Video Title</label>
                 <input
                   ref={titleInputRef}
                   value={titleDraft}
                   onChange={e => setTitleDraft(e.target.value)}
-                  onKeyDown={e => { if (e.key === 'Enter') handleSaveTitle(); if (e.key === 'Escape') setEditingTitle(false); }}
-                  className="flex-1 text-lg sm:text-xl font-bold px-3 py-1 rounded-lg border focus:outline-none focus:ring-2 focus:ring-violet-500/50"
+                  onKeyDown={e => { if (e.key === 'Enter') handleSaveDetails(); if (e.key === 'Escape') { setIsEditing(false); setTitleDraft(video.title); setCategoryDraft(video.category_id || ''); } }}
+                  placeholder="Enter video title..."
+                  className="w-full text-sm px-3.5 py-2.5 rounded-lg border focus:outline-none focus:ring-2 focus:ring-violet-500/50 transition-all font-semibold"
                   style={{ background: 'var(--bg-input)', borderColor: 'var(--border)', color: 'var(--text-primary)' }}
                 />
-                <button onClick={handleSaveTitle} disabled={savingTitle} className="p-2 rounded-lg bg-violet-600 hover:bg-violet-500 text-white disabled:opacity-50">
-                  <Check className="w-4 h-4" />
+              </div>
+
+              {/* Category Dropdown */}
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium" style={{ color: 'var(--text-secondary)' }}>Category</label>
+                <div className="relative">
+                  <select
+                    value={categoryDraft}
+                    onChange={e => setCategoryDraft(e.target.value)}
+                    className="w-full text-sm appearance-none px-3.5 py-2.5 rounded-lg border focus:outline-none focus:ring-2 focus:ring-violet-500/50 transition-all pr-10"
+                    style={{ background: 'var(--bg-input)', borderColor: 'var(--border)', color: categoryDraft ? 'var(--text-primary)' : 'var(--text-muted)' }}
+                  >
+                    <option value="">No Category</option>
+                    {categories.map(cat => (
+                      <option key={cat.id} value={cat.id}>{cat.name}</option>
+                    ))}
+                  </select>
+                  <div className="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none" style={{ color: 'var(--text-muted)' }}>
+                    <ChevronDown className="w-4 h-4" />
+                  </div>
+                </div>
+              </div>
+
+              {/* Actions */}
+              <div className="flex justify-end items-center gap-2 pt-1.5">
+                <button
+                  onClick={() => {
+                    setIsEditing(false);
+                    setTitleDraft(video.title);
+                    setCategoryDraft(video.category_id || '');
+                  }}
+                  disabled={savingDetails}
+                  type="button"
+                  className="px-4 py-2 rounded-lg text-xs font-semibold transition-colors flex items-center gap-1.5"
+                  style={{ background: 'var(--bg-hover)', color: 'var(--text-secondary)' }}
+                >
+                  <X className="w-3.5 h-3.5" />
+                  Cancel
                 </button>
-                <button onClick={() => { setEditingTitle(false); setTitleDraft(video.title); }} className="p-2 rounded-lg transition-colors" style={{ background: 'var(--bg-hover)', color: 'var(--text-secondary)' }}>
-                  <X className="w-4 h-4" />
+                <button
+                  onClick={handleSaveDetails}
+                  disabled={savingDetails}
+                  type="button"
+                  className="px-4 py-2 rounded-lg text-xs font-semibold bg-violet-600 hover:bg-violet-500 text-white disabled:opacity-50 flex items-center gap-1.5 shadow-lg shadow-violet-600/20 transition-all"
+                >
+                  {savingDetails ? (
+                    <>
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      Saving...
+                    </>
+                  ) : (
+                    <>
+                      <Check className="w-3.5 h-3.5" />
+                      Save Details
+                    </>
+                  )}
                 </button>
               </div>
-            ) : (
-              <>
+            </div>
+          ) : (
+            <>
+              {/* Category (if present) */}
+              {video.category && (
+                <div className="flex items-center gap-2 mt-4">
+                  <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold text-white" style={{ background: video.category.color }}>
+                    {video.category.name}
+                  </span>
+                </div>
+              )}
+
+              {/* Title row */}
+              <div className="flex items-start gap-2 mt-2 mb-1">
                 <h1 className="flex-1 text-lg sm:text-xl font-bold leading-snug" style={{ color: 'var(--text-primary)' }}>{video.title}</h1>
-                {/* Edit title — admin only */}
                 {isAdmin && (
-                  <button onClick={() => setEditingTitle(true)} className="p-2 rounded-lg transition-colors shrink-0 mt-0.5" style={{ color: 'var(--text-muted)' }} title="Edit title (admin)">
+                  <button onClick={() => setIsEditing(true)} className="p-2 rounded-lg transition-colors shrink-0 mt-0.5" style={{ color: 'var(--text-muted)' }} title="Edit details (admin)">
                     <Pencil className="w-4 h-4" />
                   </button>
                 )}
-              </>
-            )}
-          </div>
+              </div>
+            </>
+          )}
 
           {/* Tags */}
           {video.tags?.length > 0 && (
