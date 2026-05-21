@@ -37,25 +37,8 @@ export type Comment = {
   content: string;
 };
 
-let _client: SupabaseClient | null = null;
-
-function getClient(): SupabaseClient | null {
-  if (!_client) {
-    const url = process.env.NEXT_PUBLIC_SUPABASE_URL ?? '';
-    const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? '';
-    if (!url || !key) {
-      console.warn('Missing Supabase environment variables.');
-      return null;
-    }
-    try {
-      _client = createClient(url, key);
-    } catch (e) {
-      console.error('Failed to create Supabase client:', e);
-      return null;
-    }
-  }
-  return _client;
-}
+const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
 // A recursive proxy that can swallow any chained method calls and eventually return standard Supabase-like shapes or promises.
 const createDummyProxy = (path: string[] = []): any => {
@@ -87,12 +70,7 @@ const createDummyProxy = (path: string[] = []): any => {
   });
 };
 
-export const supabase = new Proxy({} as SupabaseClient, {
-  get(_target, prop: string) {
-    const client = getClient();
-    if (!client) {
-      return createDummyProxy([prop]);
-    }
-    return (client as unknown as Record<string, unknown>)[prop];
-  },
-});
+export const supabase = (url && key)
+  ? createClient(url, key)
+  : (createDummyProxy() as unknown as SupabaseClient);
+
