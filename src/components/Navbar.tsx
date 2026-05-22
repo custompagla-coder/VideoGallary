@@ -8,6 +8,7 @@ import AuthModal from './AuthModal';
 import CategoryManager from './CategoryManager';
 import { useTheme } from '@/context/ThemeContext';
 import { useAuth } from '@/context/AuthContext';
+import { supabase } from '@/lib/supabase';
 
 interface NavbarProps {
   onRefresh: () => void;
@@ -27,6 +28,56 @@ export default function Navbar({ onRefresh, onSearch, searchValue = '' }: Navbar
   const { theme, toggleTheme } = useTheme();
   const { user, profile, isAdmin, signOut } = useAuth();
   const userMenuRef = useRef<HTMLDivElement>(null);
+  const [activeUsers, setActiveUsers] = useState(1);
+
+  // Realtime Presence Visitor Tracking (works for both logged in and logged out users)
+  useEffect(() => {
+    let channel: any;
+    try {
+      const sessionId = Math.random().toString(36).substring(2, 10);
+      channel = supabase.channel('global-presence', {
+        config: {
+          presence: {
+            key: sessionId,
+          },
+        },
+      });
+
+      channel
+        .on('presence', { event: 'sync' }, () => {
+          try {
+            const state = channel.presenceState();
+            const totalCount = Object.keys(state).length;
+            setActiveUsers(totalCount > 0 ? totalCount : 1);
+          } catch (e) {
+            console.error('[Navbar] Presence sync state error:', e);
+          }
+        })
+        .subscribe(async (status: string) => {
+          if (status === 'SUBSCRIBED') {
+            try {
+              await channel.track({
+                online_at: new Date().toISOString(),
+              });
+            } catch (e) {
+              console.error('[Navbar] Track presence error:', e);
+            }
+          }
+        });
+    } catch (err) {
+      console.error('[Navbar] Realtime presence setup failed:', err);
+    }
+
+    return () => {
+      if (channel && typeof channel.unsubscribe === 'function') {
+        try {
+          channel.unsubscribe();
+        } catch (e) {
+          console.error('[Navbar] Unsubscribe error:', e);
+        }
+      }
+    };
+  }, []);
 
   // Close user menu on outside click
   useEffect(() => {
@@ -79,7 +130,23 @@ export default function Navbar({ onRefresh, onSearch, searchValue = '' }: Navbar
           )}
 
           {/* Right actions */}
-          <div className="flex items-center gap-1 sm:gap-2 shrink-0">
+          <div className="flex items-center gap-1.5 sm:gap-2.5 shrink-0">
+
+            {/* Live Visitors Count */}
+            <div 
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold border select-none transition-all hover:scale-105"
+              style={{ background: 'var(--bg-hover)', borderColor: 'var(--border)', color: 'var(--text-secondary)' }}
+              title={`${activeUsers} active visitor${activeUsers !== 1 ? 's' : ''} on the website`}
+            >
+              <span className="relative flex h-2 w-2">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+              </span>
+              <span className="bg-gradient-to-r from-emerald-400 to-teal-400 bg-clip-text text-transparent font-bold">
+                {activeUsers}
+              </span>
+              <span className="text-[10px]" style={{ color: 'var(--text-muted)' }}>online</span>
+            </div>
 
             {/* Theme toggle */}
             <button onClick={toggleTheme} className="w-9 h-9 flex items-center justify-center rounded-full transition-colors" style={{ color: 'var(--text-secondary)' }} title={theme === 'dark' ? 'Light mode' : 'Dark mode'}>
