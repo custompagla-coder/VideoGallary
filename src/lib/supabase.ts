@@ -70,6 +70,15 @@ const createDummyProxy = (path: string[] = []): any => {
   });
 };
 
+if (typeof window !== 'undefined') {
+  console.log('[Supabase Client Init]', {
+    hasUrl: !!url,
+    hasKey: !!key,
+    url: url ? `${url.substring(0, 15)}...` : undefined,
+    isDummy: !(url && key)
+  });
+}
+
 export const supabase = (url && key)
   ? createClient(url, key)
   : (createDummyProxy() as unknown as SupabaseClient);

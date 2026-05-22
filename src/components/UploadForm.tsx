@@ -25,6 +25,25 @@ interface UploadFormProps {
   onSuccess: () => void;
 }
 
+// Enforce a strict timeout on client-side Supabase promises to prevent silent hangs
+function withTimeout<T>(promise: Promise<T> | any, ms: number, errorMsg: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      reject(new Error(errorMsg));
+    }, ms);
+
+    Promise.resolve(promise)
+      .then((value) => {
+        clearTimeout(timer);
+        resolve(value);
+      })
+      .catch((err) => {
+        clearTimeout(timer);
+        reject(err);
+      });
+  });
+}
+
 export default function UploadForm({ onClose, onSuccess }: UploadFormProps) {
   const [title, setTitle] = useState('');
   const [videoFiles, setVideoFiles] = useState<File[]>([]);
@@ -40,8 +59,14 @@ export default function UploadForm({ onClose, onSuccess }: UploadFormProps) {
   const isLoading = step !== 'idle' && step !== 'done';
 
   useEffect(() => {
-    supabase.from('categories').select('*').order('name').then(({ data }) => {
-      setCategories(data || []);
+    console.log('[UploadForm] Fetching categories from Supabase...');
+    supabase.from('categories').select('*').order('name').then(({ data, error }) => {
+      if (error) {
+        console.error('[UploadForm] Failed to fetch categories:', error);
+      } else {
+        console.log('[UploadForm] Successfully fetched categories:', data);
+        setCategories(data || []);
+      }
     });
   }, []);
 
@@ -119,7 +144,16 @@ export default function UploadForm({ onClose, onSuccess }: UploadFormProps) {
 
         // Save to Database
         setStep('saving');
-        const { error } = await supabase.from('videos').insert({
+        console.log(`[UploadForm] Saving video ${i + 1}/${videoFiles.length} details to Supabase...`, {
+          title: videoTitle,
+          video_url: videoUrl,
+          thumbnail_url: thumbnailUrl,
+          tags,
+          duration,
+          category_id: categoryId || null,
+        });
+
+        const insertQuery = supabase.from('videos').insert({
           title: videoTitle,
           video_url: videoUrl,
           thumbnail_url: thumbnailUrl,
@@ -129,7 +163,21 @@ export default function UploadForm({ onClose, onSuccess }: UploadFormProps) {
           likes: 0,
           category_id: categoryId || null,
         });
-        if (error) throw new Error(error.message);
+
+        // 20 seconds timeout to prevent hanging if there's a CORS / Network block
+        const response = await withTimeout(
+          insertQuery,
+          20000,
+          'Database save timed out after 20 seconds. This is usually caused by Brave Shields, an adblocker (e.g. uBlock Origin), or a network firewall blocking outgoing connections to Supabase. Please check your browser developer console (F12 -> Console) for blocked/failed requests.'
+        ) as any;
+
+        const { error } = response;
+        if (error) {
+          console.error('[UploadForm] Supabase database insertion failed:', error);
+          throw new Error(error.message);
+        }
+
+        console.log('[UploadForm] Supabase database insertion succeeded!');
       }
       
       setStep('done');
