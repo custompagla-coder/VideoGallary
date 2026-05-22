@@ -694,7 +694,7 @@ export default function WatchPage() {
                 <Tv2 className="w-5 h-5 text-white" />
               </div>
               <div>
-                <p className="font-semibold text-sm" style={{ color: 'var(--text-primary)' }}>VideoVault</p>
+                <p className="font-semibold text-sm" style={{ color: 'var(--text-primary)' }}>DarkWebXYoruWeb</p>
                 <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>Serverless Gallery</p>
               </div>
               <button className="ml-3 px-4 py-1.5 rounded-full text-sm font-semibold transition-colors" style={{ background: 'var(--text-primary)', color: 'var(--bg-base)' }}>
@@ -758,7 +758,7 @@ export default function WatchPage() {
               )}
             </div>
             <p className="text-sm leading-relaxed" style={{ color: 'var(--text-secondary)' }}>
-              {video.title} · Uploaded {timeAgo(video.created_at)} · Hosted on Catbox.moe via VideoVault.
+              {video.title} · Uploaded {timeAgo(video.created_at)} · Hosted on Catbox.moe via DarkWebXYoruWeb.
             </p>
             {isAdmin && (
               <p className="text-xs mt-2 flex items-center gap-1 text-violet-400">
@@ -876,7 +876,7 @@ export default function WatchPage() {
                   </div>
                   <div className="flex-1 min-w-0 py-1">
                     <p className="text-sm font-semibold leading-snug line-clamp-2" style={{ color: 'var(--text-primary)' }}>{v.title}</p>
-                    <p className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>VideoVault</p>
+                    <p className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>DarkWebXYoruWeb</p>
                     <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
                       {v.views > 0 ? `${formatViews(v.views)} views · ` : ''}{timeAgo(v.created_at)}
                     </p>

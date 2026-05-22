@@ -61,7 +61,7 @@ export default function AuthModal({ onClose }: AuthModalProps) {
             <h2 className="text-lg font-bold" style={{ color: 'var(--text-primary)' }}>
               {tab === 'signin' ? 'Welcome back' : 'Create account'}
             </h2>
-            <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>VideoVault · Serverless Gallery</p>
+            <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>DarkWebXYoruWeb · Serverless Gallery</p>
           </div>
           <button onClick={onClose} className="p-1 rounded-lg transition-colors" style={{ color: 'var(--text-muted)' }}>
             <X className="w-5 h-5" />

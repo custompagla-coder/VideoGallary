@@ -12,12 +12,12 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: 'VideoVault — Serverless Video Gallery',
+  title: 'DarkWebXYoruWeb — Serverless Video Gallery',
   description:
     'A lightweight, serverless video sharing platform. Upload MP4 files, auto-generate thumbnails, and share your videos instantly via Catbox.moe.',
   keywords: ['video gallery', 'serverless', 'catbox', 'video sharing'],
   openGraph: {
-    title: 'VideoVault — Serverless Video Gallery',
+    title: 'DarkWebXYoruWeb — Serverless Video Gallery',
     description: 'Upload and share videos instantly with automatic thumbnail generation.',
     type: 'website',
   },

@@ -26,7 +26,7 @@ export async function generateThumbnailAndDuration(
         ctx.font = 'bold 36px sans-serif';
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
-        ctx.fillText('VideoVault', canvas.width / 2, canvas.height / 2 - 20);
+        ctx.fillText('DarkWebXYoruWeb', canvas.width / 2, canvas.height / 2 - 20);
 
         ctx.font = '16px sans-serif';
         ctx.fillStyle = 'rgba(255, 255, 255, 0.75)';

@@ -106,7 +106,7 @@ export default function Navbar({ onRefresh, onSearch, searchValue = '' }: Navbar
               <Tv2 className="w-4 h-4 text-white" />
             </div>
             <span className="font-bold text-lg tracking-tight hidden sm:block" style={{ color: 'var(--text-primary)' }}>
-              Video<span className="bg-gradient-to-r from-violet-400 to-fuchsia-400 bg-clip-text text-transparent">Vault</span>
+              DarkWeb<span className="bg-gradient-to-r from-violet-400 to-fuchsia-400 bg-clip-text text-transparent">XYoruWeb</span>
             </span>
           </Link>
 

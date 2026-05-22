@@ -80,7 +80,7 @@ export default function VideoCard({ video }: VideoCardProps) {
           <h3 className="text-sm font-semibold leading-snug line-clamp-2 transition-colors" style={{ color: 'var(--text-primary)' }}>
             {video.title}
           </h3>
-          <p className="text-xs mt-1" style={{ color: 'var(--text-secondary)' }}>VideoVault</p>
+          <p className="text-xs mt-1" style={{ color: 'var(--text-secondary)' }}>DarkWebXYoruWeb</p>
           <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
             {video.views > 0 ? `${formatViews(video.views)} views · ` : ''}{timeAgo(video.created_at)}
           </p>
