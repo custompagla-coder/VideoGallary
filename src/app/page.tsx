@@ -2,7 +2,7 @@
 
 export const dynamic = 'force-dynamic';
 
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { Video as VideoIcon } from 'lucide-react';
@@ -25,31 +25,63 @@ export default function HomePage() {
   const [sortBy, setSortBy] = useState<'newest' | 'views' | 'likes'>('newest');
   const [page, setPage] = useState(1);
 
-  const fetchData = useCallback(async () => {
+  // Track retry attempts with a ref so we don't need it in useCallback deps
+  const retryCount = useRef(0);
+
+  const fetchData = useCallback(async (isRetry = false) => {
+    if (!isRetry) retryCount.current = 0;
     try {
       setLoading(true);
       setError(null);
+
       const [{ data: vids, error: vErr }, { data: cats }] = await Promise.all([
         supabase
           .from('videos')
           .select('*, category:categories(id, name, slug, color)')
-          .or('status.eq.published,status.is.null')
           .order('created_at', { ascending: false }),
         supabase.from('categories').select('*').order('name'),
       ]);
+
       if (vErr) throw new Error(vErr.message);
-      setPinnedVideos((vids || []).filter((v: Video) => v.is_pinned));
-      setVideos(vids || []);
+
+      const allVids = vids || [];
+      setPinnedVideos(allVids.filter((v: Video) => v.is_pinned));
+      setVideos(allVids);
       setCategories(cats || []);
+      retryCount.current = 0; // success — reset
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load videos');
+      retryCount.current += 1;
+      if (retryCount.current < 3) {
+        // Auto-retry: wait 1.5s then try again silently
+        setTimeout(() => fetchData(true), 1500);
+      } else {
+        setError(err instanceof Error ? err.message : 'Failed to load videos');
+        setLoading(false);
+      }
     } finally {
-      setLoading(false);
+      if (retryCount.current === 0) setLoading(false);
     }
   }, []);
 
   useEffect(() => { fetchData(); }, [fetchData]);
   useEffect(() => { setPage(1); }, [search, activeCategorySlug, sortBy]);
+
+  // Re-fetch when user comes back to the tab or reconnects to the internet
+  useEffect(() => {
+    const onVisible = () => {
+      if (document.visibilityState === 'visible' && videos.length === 0 && !loading) {
+        fetchData();
+      }
+    };
+    const onOnline = () => fetchData();
+    document.addEventListener('visibilitychange', onVisible);
+    window.addEventListener('online', onOnline);
+    return () => {
+      document.removeEventListener('visibilitychange', onVisible);
+      window.removeEventListener('online', onOnline);
+    };
+  }, [fetchData, videos.length, loading]);
+
 
   // Filter and sort videos
   const filtered = useMemo(() => {
@@ -238,7 +270,7 @@ export default function HomePage() {
             </div>
             <h2 className="text-lg font-semibold mb-2" style={{ color: 'var(--text-primary)' }}>Something went wrong</h2>
             <p className="text-sm max-w-xs mb-6" style={{ color: 'var(--text-muted)' }}>{error}</p>
-            <button onClick={fetchData} className="px-5 py-2 rounded-full text-sm font-semibold" style={{ background: 'var(--text-primary)', color: 'var(--bg-base)' }}>Try again</button>
+            <button onClick={() => fetchData()} className="px-5 py-2 rounded-full text-sm font-semibold" style={{ background: 'var(--text-primary)', color: 'var(--bg-base)' }}>Try again</button>
           </div>
         )}
 

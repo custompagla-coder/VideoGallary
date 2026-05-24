@@ -273,14 +273,18 @@ export default function WatchPage() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [handlePlayPause, handleSkip, handleVolumeToggle, handleFullscreenToggle, handleVolumeSlide, volume]);
 
-  const fetchData = useCallback(async () => {
+  const watchRetry = useRef(0);
+
+  const fetchData = useCallback(async (isRetry = false) => {
+    if (!isRetry) watchRetry.current = 0;
     setLoading(true);
     try {
-      const [{ data: vid }, { data: all }, { data: cats }] = await Promise.all([
+      const [{ data: vid, error: vidErr }, { data: all }, { data: cats }] = await Promise.all([
         supabase.from('videos').select('*, category:categories(id,name,slug,color)').eq('id', id).single(),
         supabase.from('videos').select('*, category:categories(id,name,slug,color)').order('created_at', { ascending: false }),
         supabase.from('categories').select('*').order('name'),
       ]);
+      if (vidErr) throw new Error(vidErr.message);
       if (vid) {
         setVideo(vid);
         setLocalLikes(vid.likes ?? 0);
@@ -289,13 +293,32 @@ export default function WatchPage() {
       }
       setRelated((all ?? []).filter((v: Video) => v.id !== id));
       setCategories(cats || []);
-    } finally {
+      watchRetry.current = 0;
       setLoading(false);
+    } catch {
+      watchRetry.current += 1;
+      if (watchRetry.current < 3) {
+        setTimeout(() => fetchData(true), 1500);
+      } else {
+        setLoading(false);
+      }
     }
   }, [id]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
   useEffect(() => { setLiked(getLiked().has(id)); }, [id]);
+
+  // Re-fetch watch page if user comes back to a blank tab
+  useEffect(() => {
+    const onVisible = () => {
+      if (document.visibilityState === 'visible' && !video && !loading) {
+        fetchData();
+      }
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => document.removeEventListener('visibilitychange', onVisible);
+  }, [fetchData, video, loading]);
+
 
   // Watch History — add to history when video is loaded
   const { addToHistory } = useWatchHistory();
