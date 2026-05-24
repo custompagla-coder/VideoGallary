@@ -7,7 +7,7 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { Flame, Eye, ThumbsUp, TrendingUp, AlertCircle } from 'lucide-react';
 import Navbar from '@/components/Navbar';
-import { supabase, Video } from '@/lib/supabase';
+import { Video } from '@/lib/supabase';
 
 interface TrendingVideo extends Video {
   score: number;
@@ -61,18 +61,15 @@ export default function TrendingPage() {
     try {
       setLoading(true);
       setError(null);
-      const { data, error: err } = await supabase
-        .from('videos')
-        .select('*, category:categories(id, name, slug, color)')
-        .order('created_at', { ascending: false });
-
-      if (err) throw new Error(err.message);
+      const res = await fetch('/api/videos');
+      if (!res.ok) throw new Error(`Videos fetch failed: ${res.status}`);
+      const { data } = await res.json();
 
       const scored = (data || [])
-        .map(v => ({ ...v, score: computeScore(v) }))
-        .sort((a, b) => b.score - a.score)
+        .map((v: Video) => ({ ...v, score: computeScore(v) }))
+        .sort((a: any, b: any) => b.score - a.score)
         .slice(0, 50)
-        .map((v, i) => ({ ...v, rank: i + 1 }));
+        .map((v: any, i: number) => ({ ...v, rank: i + 1 }));
 
       setVideos(scored);
     } catch (e) {

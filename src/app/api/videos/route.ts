@@ -42,3 +42,57 @@ export async function POST(request: NextRequest) {
     );
   }
 }
+
+export async function GET(request: NextRequest) {
+  try {
+    const { searchParams } = new URL(request.url);
+    const id = searchParams.get('id');
+    const search = searchParams.get('search');
+    const limit = searchParams.get('limit');
+
+    if (id) {
+      // Fetch a single video
+      const { data, error } = await supabase
+        .from('videos')
+        .select('*, category:categories(id,name,slug,color)')
+        .eq('id', id)
+        .single();
+
+      if (error) {
+        return NextResponse.json({ error: error.message }, { status: 500 });
+      }
+      return NextResponse.json({ data });
+    } else {
+      // Fetch all videos with optional search and limit filters
+      let query = supabase
+        .from('videos')
+        .select('*, category:categories(id,name,slug,color)')
+        .order('created_at', { ascending: false });
+
+      if (search) {
+        query = query.ilike('title', `%${search}%`);
+      }
+
+      if (limit) {
+        const limitVal = parseInt(limit, 10);
+        if (!isNaN(limitVal)) {
+          query = query.limit(limitVal);
+        }
+      }
+
+      const { data, error } = await query;
+
+      if (error) {
+        return NextResponse.json({ error: error.message }, { status: 500 });
+      }
+      return NextResponse.json({ data: data || [] });
+    }
+  } catch (error) {
+    console.error('[API Videos GET] Server-side error:', error);
+    return NextResponse.json(
+      { error: 'Internal server error during video fetch' },
+      { status: 500 }
+    );
+  }
+}
+

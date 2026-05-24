@@ -45,16 +45,16 @@ function HomePageContent() {
       setLoading(true);
       setError(null);
 
-      const [{ data: vids, error: vErr }, { data: cats, error: cErr }] = await Promise.all([
-        supabase
-          .from('videos')
-          .select('*, category:categories(id, name, slug, color)')
-          .order('created_at', { ascending: false }),
-        supabase.from('categories').select('*').order('name'),
+      const [vidsRes, catsRes] = await Promise.all([
+        fetch('/api/videos'),
+        fetch('/api/categories'),
       ]);
 
-      if (vErr) throw new Error(vErr.message);
-      if (cErr) throw new Error(cErr.message);
+      if (!vidsRes.ok) throw new Error(`Videos fetch failed: ${vidsRes.status}`);
+      if (!catsRes.ok) throw new Error(`Categories fetch failed: ${catsRes.status}`);
+
+      const { data: vids } = await vidsRes.json();
+      const { data: cats } = await catsRes.json();
 
       const allVids = vids || [];
       setPinnedVideos(allVids.filter((v: Video) => v.is_pinned));
@@ -74,6 +74,7 @@ function HomePageContent() {
       if (retryCount.current === 0) setLoading(false);
     }
   }, []);
+
 
   useEffect(() => { fetchData(); }, [fetchData]);
   useEffect(() => { setPage(1); }, [search, activeCategorySlug, sortBy]);

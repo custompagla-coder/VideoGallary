@@ -49,15 +49,23 @@ export default function VideoCard({ video, onRefresh }: VideoCardProps) {
   // Phase 2B – watch progress bar
   const [watchProgress, setWatchProgress] = useState(0);
 
-  // IntersectionObserver – one-shot fade-in
+  // IntersectionObserver – one-shot fade-in with robust timeout fallback
   useEffect(() => {
     const el = cardRef.current;
-    if (!el) return;
+    if (!el) {
+      setIsVisible(true);
+      return;
+    }
+
+    const timer = setTimeout(() => {
+      setIsVisible(true);
+    }, 400); // 400ms fallback to guarantee visibility under any circumstances
 
     const observer = new IntersectionObserver(
       (entries) => {
         if (entries[0].isIntersecting) {
           setIsVisible(true);
+          clearTimeout(timer);
           observer.disconnect();
         }
       },
@@ -65,7 +73,10 @@ export default function VideoCard({ video, onRefresh }: VideoCardProps) {
     );
 
     observer.observe(el);
-    return () => observer.disconnect();
+    return () => {
+      clearTimeout(timer);
+      observer.disconnect();
+    };
   }, []);
 
   // Read resume position from localStorage and compute progress %

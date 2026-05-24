@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { Send, MessageSquare, Loader2, CornerDownRight } from 'lucide-react';
-import { supabase, Comment } from '@/lib/supabase';
+import { Comment } from '@/lib/supabase';
 import toast from 'react-hot-toast';
 
 interface CommentWithReplies extends Comment {
@@ -64,62 +64,50 @@ export default function CommentsSection({ videoId }: CommentsSectionProps) {
   const [userReactions, setUserReactions] = useState<Record<string, Record<string, boolean>>>({});
 
   const fetchComments = useCallback(async () => {
-    const { data } = await supabase
-      .from('comments')
-      .select('*')
-      .eq('video_id', videoId)
-      .order('created_at', { ascending: true });
+    try {
+      const sessionId = getSessionId();
+      const res = await fetch(`/api/comments?video_id=${videoId}&session_id=${sessionId}`);
+      if (!res.ok) throw new Error(`Comments fetch failed: ${res.status}`);
+      const { comments: all, reactions: counts, userReactions: mine } = await res.json();
 
-    const all = (data || []) as CommentWithReplies[];
-    const roots = all.filter(c => !c.parent_id);
-    const repliesMap: Record<string, CommentWithReplies[]> = {};
-    all.filter(c => c.parent_id).forEach(c => {
-      if (!repliesMap[c.parent_id!]) repliesMap[c.parent_id!] = [];
-      repliesMap[c.parent_id!].push(c);
-    });
-    roots.forEach(r => { r.replies = repliesMap[r.id] || []; });
-    setComments(roots);
-    setLoading(false);
+      const roots = (all || []).filter((c: any) => !c.parent_id);
+      const repliesMap: Record<string, CommentWithReplies[]> = {};
+      (all || []).filter((c: any) => c.parent_id).forEach((c: any) => {
+        if (!repliesMap[c.parent_id!]) repliesMap[c.parent_id!] = [];
+        repliesMap[c.parent_id!].push(c);
+      });
+      roots.forEach((r: any) => { r.replies = repliesMap[r.id] || []; });
+      
+      setComments(roots);
+      setReactions(counts || {});
+      setUserReactions(mine || {});
+    } catch (err) {
+      console.error('[CommentsSection Fetch] Error:', err);
+    } finally {
+      setLoading(false);
+    }
   }, [videoId]);
 
-  const fetchReactions = useCallback(async (commentIds: string[]) => {
-    if (commentIds.length === 0) return;
-    const sessionId = getSessionId();
-    const { data } = await supabase
-      .from('comment_reactions')
-      .select('*')
-      .in('comment_id', commentIds);
-
-    const counts: Record<string, Record<string, number>> = {};
-    const mine: Record<string, Record<string, boolean>> = {};
-    (data || []).forEach((r: { comment_id: string; emoji: string; session_id: string }) => {
-      if (!counts[r.comment_id]) counts[r.comment_id] = {};
-      counts[r.comment_id][r.emoji] = (counts[r.comment_id][r.emoji] || 0) + 1;
-      if (r.session_id === sessionId) {
-        if (!mine[r.comment_id]) mine[r.comment_id] = {};
-        mine[r.comment_id][r.emoji] = true;
-      }
-    });
-    setReactions(counts);
-    setUserReactions(mine);
-  }, []);
-
   useEffect(() => { fetchComments(); }, [fetchComments]);
-
-  useEffect(() => {
-    if (comments.length > 0) {
-      const allIds = comments.flatMap(c => [c.id, ...(c.replies || []).map(r => r.id)]);
-      fetchReactions(allIds);
-    }
-  }, [comments, fetchReactions]);
 
   async function handleReact(commentId: string, emoji: string) {
     const sessionId = getSessionId();
     const isReacted = userReactions[commentId]?.[emoji];
     try {
+      const res = await fetch('/api/comments/react', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          comment_id: commentId,
+          emoji,
+          session_id: sessionId,
+          action: isReacted ? 'remove' : 'add',
+        }),
+      });
+
+      if (!res.ok) throw new Error('Reaction failed');
+
       if (isReacted) {
-        await supabase.from('comment_reactions').delete()
-          .eq('comment_id', commentId).eq('session_id', sessionId).eq('emoji', emoji);
         setReactions(prev => {
           const next = { ...prev, [commentId]: { ...(prev[commentId] || {}) } };
           next[commentId][emoji] = Math.max(0, (next[commentId][emoji] || 1) - 1);
@@ -131,7 +119,6 @@ export default function CommentsSection({ videoId }: CommentsSectionProps) {
           return next;
         });
       } else {
-        await supabase.from('comment_reactions').insert({ comment_id: commentId, emoji, session_id: sessionId });
         setReactions(prev => ({
           ...prev,
           [commentId]: { ...(prev[commentId] || {}), [emoji]: ((prev[commentId]?.[emoji]) || 0) + 1 },
@@ -149,13 +136,22 @@ export default function CommentsSection({ videoId }: CommentsSectionProps) {
     if (!content.trim()) return toast.error('Please write a comment.');
     setSubmitting(true);
     try {
-      const { error } = await supabase.from('comments').insert({
-        video_id: videoId,
-        author_name: authorName.trim() || 'Anonymous',
-        content: content.trim(),
-        parent_id: null,
+      const res = await fetch('/api/comments', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          video_id: videoId,
+          author_name: authorName.trim() || 'Anonymous',
+          content: content.trim(),
+          parent_id: null,
+        }),
       });
-      if (error) throw new Error(error.message);
+
+      if (!res.ok) {
+        const errData = await res.json();
+        throw new Error(errData.error || 'Failed to post comment');
+      }
+
       setContent('');
       toast.success('Comment posted!');
       fetchComments();
@@ -170,13 +166,22 @@ export default function CommentsSection({ videoId }: CommentsSectionProps) {
     if (!replyContent.trim()) return toast.error('Please write a reply.');
     setSubmittingReply(true);
     try {
-      const { error } = await supabase.from('comments').insert({
-        video_id: videoId,
-        author_name: authorName.trim() || 'Anonymous',
-        content: replyContent.trim(),
-        parent_id: parentId,
+      const res = await fetch('/api/comments', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          video_id: videoId,
+          author_name: authorName.trim() || 'Anonymous',
+          content: replyContent.trim(),
+          parent_id: parentId,
+        }),
       });
-      if (error) throw new Error(error.message);
+
+      if (!res.ok) {
+        const errData = await res.json();
+        throw new Error(errData.error || 'Failed to post reply');
+      }
+
       setReplyContent('');
       setReplyingTo(null);
       toast.success('Reply posted!');

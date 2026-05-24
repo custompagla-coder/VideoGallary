@@ -64,7 +64,7 @@ export default function Navbar({ onRefresh, onSearch, searchValue = '' }: Navbar
     setInputVal(searchValue || '');
   }, [searchValue]);
 
-  // Debounced Supabase Autocomplete Search
+  // Debounced Autocomplete Search via Server-Side API Proxy
   useEffect(() => {
     if (!inputVal.trim()) {
       setSuggestions([]);
@@ -73,14 +73,10 @@ export default function Navbar({ onRefresh, onSearch, searchValue = '' }: Navbar
 
     const timer = setTimeout(async () => {
       try {
-        const { data, error } = await supabase
-          .from('videos')
-          .select('*, category:categories(id, name, slug, color)')
-          .ilike('title', `%${inputVal}%`)
-          .limit(5);
-
-        if (!error && data) {
-          setSuggestions(data);
+        const res = await fetch(`/api/videos?search=${encodeURIComponent(inputVal)}&limit=5`);
+        if (res.ok) {
+          const { data } = await res.json();
+          setSuggestions(data || []);
         }
       } catch (err) {
         console.error('[Navbar Search] Suggestions error:', err);

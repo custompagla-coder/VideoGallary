@@ -54,12 +54,24 @@ export default function AdminPage() {
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
-      const [{ data: vids }, { count: commentCount }] = await Promise.all([
-        supabase.from('videos').select('*, category:categories(id,name,slug,color)').order('created_at', { ascending: false }),
-        supabase.from('comments').select('*', { count: 'exact', head: true }),
-      ]);
-      setVideos(vids || []);
-      setTotalComments(commentCount || 0);
+      const res = await fetch('/api/videos');
+      let vids: VideoType[] = [];
+      if (res.ok) {
+        const json = await res.json();
+        vids = json.data || [];
+      }
+      setVideos(vids);
+
+      let commentCount = 0;
+      try {
+        const { count } = await supabase.from('comments').select('*', { count: 'exact', head: true });
+        commentCount = count || 0;
+      } catch (e) {
+        console.warn('[AdminPage] Comments count fetch blocked or failed:', e);
+      }
+      setTotalComments(commentCount);
+    } catch (err) {
+      console.error('[AdminPage] Fetch error:', err);
     } finally {
       setLoading(false);
     }

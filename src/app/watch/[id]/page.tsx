@@ -286,18 +286,19 @@ export default function WatchPage() {
     if (!isRetry) watchRetry.current = 0;
     setLoading(true);
     try {
-      const [
-        { data: vid, error: vidErr },
-        { data: all, error: allErr },
-        { data: cats, error: catErr }
-      ] = await Promise.all([
-        supabase.from('videos').select('*, category:categories(id,name,slug,color)').eq('id', id).single(),
-        supabase.from('videos').select('*, category:categories(id,name,slug,color)').order('created_at', { ascending: false }),
-        supabase.from('categories').select('*').order('name'),
+      const [vidRes, allRes, catsRes] = await Promise.all([
+        fetch(`/api/videos?id=${id}`),
+        fetch('/api/videos'),
+        fetch('/api/categories'),
       ]);
-      if (vidErr) throw new Error(vidErr.message);
-      if (allErr) throw new Error(allErr.message);
-      if (catErr) throw new Error(catErr.message);
+
+      if (!vidRes.ok) throw new Error(`Video details fetch failed: ${vidRes.status}`);
+      if (!allRes.ok) throw new Error(`Videos fetch failed: ${allRes.status}`);
+      if (!catsRes.ok) throw new Error(`Categories fetch failed: ${catsRes.status}`);
+
+      const { data: vid } = await vidRes.json();
+      const { data: all } = await allRes.json();
+      const { data: cats } = await catsRes.json();
 
       if (vid) {
         setVideo(vid);
@@ -309,7 +310,8 @@ export default function WatchPage() {
       setCategories(cats || []);
       watchRetry.current = 0;
       setLoading(false);
-    } catch {
+    } catch (err) {
+      console.error('[WatchPage FetchData] Error:', err);
       watchRetry.current += 1;
       if (watchRetry.current < 3) {
         setTimeout(() => fetchData(true), 1500);
@@ -318,6 +320,7 @@ export default function WatchPage() {
       }
     }
   }, [id]);
+
 
   useEffect(() => { fetchData(); }, [fetchData]);
   useEffect(() => { setLiked(getLiked().has(id)); }, [id]);
