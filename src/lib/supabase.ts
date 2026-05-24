@@ -12,6 +12,11 @@ export type Video = {
   duration: number;
   category_id?: string;
   category?: Category;
+  is_pinned?: boolean;
+  status?: 'published' | 'draft' | 'scheduled' | null;
+  scheduled_at?: string | null;
+  description?: string;
+  is_featured?: boolean;
 };
 
 export type Category = {
@@ -35,6 +40,60 @@ export type Comment = {
   video_id: string;
   author_name: string;
   content: string;
+  parent_id?: string | null;
+};
+
+export type Like = {
+  id: string;
+  video_id: string;
+  session_id: string;
+  created_at: string;
+};
+
+export type View = {
+  id: string;
+  video_id: string;
+  session_id: string;
+  created_at: string;
+};
+
+export type Chapter = {
+  id: string;
+  video_id: string;
+  title: string;
+  time_seconds: number;
+  sort_order: number;
+  created_at: string;
+};
+
+export type Playlist = {
+  id: string;
+  title: string;
+  description?: string;
+  created_at: string;
+};
+
+export type PlaylistVideo = {
+  id: string;
+  playlist_id: string;
+  video_id: string;
+  sort_order: number;
+  video?: Video;
+};
+
+export type CommentReaction = {
+  id: string;
+  comment_id: string;
+  emoji: string;
+  session_id: string;
+  created_at: string;
+};
+
+export type VideoAnalytics = {
+  id: string;
+  video_id: string;
+  event_type: string;
+  created_at: string;
 };
 
 const url = process.env.NEXT_PUBLIC_SUPABASE_URL;

@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect } from 'react';
 import Link from 'next/link';
-import { Upload, Search, Tv2, Bell, Sun, Moon, LayoutGrid, LogOut, Shield, ChevronDown } from 'lucide-react';
+import { Upload, Search, Tv2, Bell, Sun, Moon, LayoutGrid, LogOut, Shield, ChevronDown, Flame, Clock, LayoutDashboard } from 'lucide-react';
 import UploadForm from './UploadForm';
 import AuthModal from './AuthModal';
 import CategoryManager from './CategoryManager';
@@ -110,6 +110,16 @@ export default function Navbar({ onRefresh, onSearch, searchValue = '' }: Navbar
             </span>
           </Link>
 
+          {/* Trending Nav Link */}
+          <Link
+            href="/trending"
+            className="hidden md:flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold transition-all hover:scale-105 border"
+            style={{ background: 'var(--bg-hover)', borderColor: 'var(--border)', color: 'var(--text-secondary)' }}
+          >
+            <Flame className="w-3.5 h-3.5 text-orange-400" />
+            <span>Trending</span>
+          </Link>
+
           {/* Search bar */}
           {onSearch && (
             <div className="flex-1 max-w-xl hidden sm:flex items-center">
@@ -208,17 +218,42 @@ export default function Navbar({ onRefresh, onSearch, searchValue = '' }: Navbar
                         </span>
                       )}
                     </div>
+                    {/* History link - all users */}
+                    <Link
+                      href="/history"
+                      onClick={() => setShowUserMenu(false)}
+                      className="w-full flex items-center gap-3 px-4 py-3 text-sm transition-colors text-left"
+                      style={{ color: 'var(--text-secondary)' }}
+                      onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg-hover)')}
+                      onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+                    >
+                      <Clock className="w-4 h-4" />
+                      Watch History
+                    </Link>
                     {isAdmin && (
-                      <button
-                        onClick={() => { setShowUserMenu(false); setShowCategories(true); }}
-                        className="w-full flex items-center gap-3 px-4 py-3 text-sm transition-colors text-left"
-                        style={{ color: 'var(--text-secondary)' }}
-                        onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg-hover)')}
-                        onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
-                      >
-                        <LayoutGrid className="w-4 h-4" />
-                        Manage Categories
-                      </button>
+                      <>
+                        <Link
+                          href="/admin"
+                          onClick={() => setShowUserMenu(false)}
+                          className="w-full flex items-center gap-3 px-4 py-3 text-sm transition-colors text-left"
+                          style={{ color: 'var(--text-secondary)' }}
+                          onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg-hover)')}
+                          onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+                        >
+                          <LayoutDashboard className="w-4 h-4" />
+                          Admin Dashboard
+                        </Link>
+                        <button
+                          onClick={() => { setShowUserMenu(false); setShowCategories(true); }}
+                          className="w-full flex items-center gap-3 px-4 py-3 text-sm transition-colors text-left"
+                          style={{ color: 'var(--text-secondary)' }}
+                          onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg-hover)')}
+                          onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+                        >
+                          <LayoutGrid className="w-4 h-4" />
+                          Manage Categories
+                        </button>
+                      </>
                     )}
                     <button
                       onClick={handleSignOut}

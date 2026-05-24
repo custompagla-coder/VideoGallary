@@ -17,6 +17,7 @@ import { Toaster } from 'react-hot-toast';
 import toast from 'react-hot-toast';
 import { formatDuration } from '@/utils/thumbnailGenerator';
 import { useAuth } from '@/context/AuthContext';
+import { useWatchHistory } from '@/hooks/useWatchHistory';
 
 function timeAgo(dateStr: string): string {
   const diff = Date.now() - new Date(dateStr).getTime();
@@ -87,11 +88,27 @@ export default function WatchPage() {
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [showControls, setShowControls] = useState(true);
 
+  // Playback speed
+  const [playbackRate, setPlaybackRate] = useState(1);
+  const [showSpeedMenu, setShowSpeedMenu] = useState(false);
+
+  // Keyboard shortcuts overlay
+  const [showShortcuts, setShowShortcuts] = useState(false);
+
+  // Resume playback
+  const [resumeTime, setResumeTime] = useState<number | null>(null);
+  const [showResume, setShowResume] = useState(false);
+
+  const SPEED_OPTIONS = [0.5, 0.75, 1, 1.25, 1.5, 2];
+  const RESUME_KEY = (videoId: string) => `dwx-resume-${videoId}`;
+
   const videoRef = useRef<HTMLVideoElement>(null);
   const playerContainerRef = useRef<HTMLDivElement>(null);
   const controlsTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const viewCounted = useRef(false);
   const titleInputRef = useRef<HTMLInputElement>(null);
+  const speedMenuRef = useRef<HTMLDivElement>(null);
+  const lastSaveRef = useRef(0);
 
   // Reset controls hide timer on mouse move
   const resetControlsTimeout = useCallback(() => {
@@ -127,6 +144,14 @@ export default function WatchPage() {
   const handleSkip = useCallback((amount: number) => {
     if (!videoRef.current) return;
     videoRef.current.currentTime = Math.max(0, Math.min(videoRef.current.duration || 0, videoRef.current.currentTime + amount));
+    resetControlsTimeout();
+  }, [resetControlsTimeout]);
+
+  const handlePlaybackRate = useCallback((rate: number) => {
+    if (!videoRef.current) return;
+    videoRef.current.playbackRate = rate;
+    setPlaybackRate(rate);
+    setShowSpeedMenu(false);
     resetControlsTimeout();
   }, [resetControlsTimeout]);
 
@@ -190,6 +215,30 @@ export default function WatchPage() {
     return () => document.removeEventListener('fullscreenchange', onFsChange);
   }, []);
 
+  // Click-outside handler for speed menu
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (speedMenuRef.current && !speedMenuRef.current.contains(e.target as Node)) {
+        setShowSpeedMenu(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  // Resume playback: check localStorage on mount
+  useEffect(() => {
+    const saved = localStorage.getItem(RESUME_KEY(id));
+    if (saved) {
+      const t = parseInt(saved, 10);
+      if (t > 10) {
+        setResumeTime(t);
+        setShowResume(true);
+      }
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id]);
+
   // Keyboard controls
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -206,11 +255,23 @@ export default function WatchPage() {
       } else if (e.key === 'ArrowRight') {
         e.preventDefault();
         handleSkip(5);
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        handleVolumeSlide(Math.min(1, volume + 0.1));
+      } else if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        handleVolumeSlide(Math.max(0, volume - 0.1));
+      } else if (e.key === 'm' || e.key === 'M') {
+        handleVolumeToggle();
+      } else if (e.key === 'f' || e.key === 'F') {
+        handleFullscreenToggle();
+      } else if (e.key === '?') {
+        setShowShortcuts(v => !v);
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [handlePlayPause, handleSkip]);
+  }, [handlePlayPause, handleSkip, handleVolumeToggle, handleFullscreenToggle, handleVolumeSlide, volume]);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -236,6 +297,19 @@ export default function WatchPage() {
   useEffect(() => { fetchData(); }, [fetchData]);
   useEffect(() => { setLiked(getLiked().has(id)); }, [id]);
 
+  // Watch History — add to history when video is loaded
+  const { addToHistory } = useWatchHistory();
+  useEffect(() => {
+    if (video) {
+      addToHistory({
+        videoId: video.id,
+        title: video.title,
+        thumbnailUrl: video.thumbnail_url,
+        duration: video.duration,
+      });
+    }
+  }, [video?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const filteredRelated = useMemo(() => {
     let result = [...related];
 
@@ -244,17 +318,27 @@ export default function WatchPage() {
       result = result.filter(v => v.category?.slug === activeCategorySlug);
     }
 
-    // Apply sorting
+    // Apply sorting — if no explicit filter, use Related by Tags score
     if (sortBy === 'views') {
       result.sort((a, b) => (b.views ?? 0) - (a.views ?? 0));
     } else if (sortBy === 'likes') {
       result.sort((a, b) => (b.likes ?? 0) - (a.likes ?? 0));
+    } else if (sortBy === 'newest' && activeCategorySlug === 'all' && video?.tags?.length) {
+      // Related by tags: score = shared tag count × 10 + recency bonus
+      const currentTags = new Set(video.tags || []);
+      result.sort((a, b) => {
+        const scoreA = (a.tags?.filter(t => currentTags.has(t)).length ?? 0) * 10
+          - (Date.now() - new Date(a.created_at).getTime()) / 86400000;
+        const scoreB = (b.tags?.filter(t => currentTags.has(t)).length ?? 0) * 10
+          - (Date.now() - new Date(b.created_at).getTime()) / 86400000;
+        return scoreB - scoreA;
+      });
     } else {
       result.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
     }
 
     return result;
-  }, [related, activeCategorySlug, sortBy]);
+  }, [related, activeCategorySlug, sortBy, video?.tags]);
 
   useEffect(() => {
     if (isEditing) titleInputRef.current?.focus();
@@ -421,6 +505,28 @@ export default function WatchPage() {
             <ArrowLeft className="w-4 h-4" /> Back
           </button>
 
+          {/* Resume Playback Banner */}
+          {showResume && resumeTime && (
+            <div className="mb-3 flex items-center gap-3 px-4 py-2.5 rounded-xl border" style={{ background: 'var(--bg-card)', borderColor: 'var(--border)' }}>
+              <span className="text-xs" style={{ color: 'var(--text-secondary)' }}>You left off at <strong style={{ color: 'var(--text-primary)' }}>{formatDuration(resumeTime)}</strong></span>
+              <button
+                onClick={() => {
+                  if (videoRef.current) videoRef.current.currentTime = resumeTime!;
+                  setShowResume(false);
+                }}
+                className="ml-auto px-3 py-1 rounded-lg text-xs font-semibold bg-violet-600 hover:bg-violet-500 text-white transition-colors"
+              >
+                Resume
+              </button>
+              <button
+                onClick={() => { setShowResume(false); localStorage.removeItem(RESUME_KEY(id)); }}
+                style={{ color: 'var(--text-muted)' }}
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          )}
+
           {/* Custom Video Player with Anti-Download Restraints */}
           <div 
             ref={playerContainerRef}
@@ -443,13 +549,25 @@ export default function WatchPage() {
               controlsList="nodownload"
               onClick={handlePlayPause}
               onTimeUpdate={() => {
-                if (videoRef.current) setCurrentTime(videoRef.current.currentTime);
+                if (videoRef.current) {
+                  setCurrentTime(videoRef.current.currentTime);
+                  if (Math.abs(videoRef.current.currentTime - lastSaveRef.current) >= 5) {
+                    lastSaveRef.current = videoRef.current.currentTime;
+                    const pct = videoRef.current.currentTime / (videoRef.current.duration || 1);
+                    if (pct > 0.02 && pct < 0.97) {
+                      localStorage.setItem(RESUME_KEY(id), String(Math.floor(videoRef.current.currentTime)));
+                    } else if (pct >= 0.97) {
+                      localStorage.removeItem(RESUME_KEY(id));
+                    }
+                  }
+                }
               }}
               onLoadedMetadata={() => {
                 if (videoRef.current) setDuration(videoRef.current.duration);
               }}
               onPlay={() => setIsPlaying(true)}
               onPause={() => setIsPlaying(false)}
+              onRateChange={() => { if (videoRef.current) setPlaybackRate(videoRef.current.playbackRate); }}
             />
 
             {/* Custom Overlay Controls */}
@@ -559,6 +677,32 @@ export default function WatchPage() {
                         onChange={e => handleVolumeSlide(parseFloat(e.target.value))}
                         className="w-16 md:w-20 h-1 accent-violet-500 bg-white/30 rounded-lg appearance-none cursor-pointer group-hover/volume:w-20 transition-all"
                       />
+                    </div>
+
+                    {/* Speed Selector */}
+                    <div className="relative" ref={speedMenuRef}>
+                      <button
+                        onClick={() => setShowSpeedMenu(v => !v)}
+                        className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-bold hover:text-violet-400 transition-colors border border-white/10 hover:border-violet-500/40"
+                        title="Playback speed"
+                      >
+                        {playbackRate === 1 ? '1×' : `${playbackRate}×`}
+                      </button>
+                      {showSpeedMenu && (
+                        <div className="absolute bottom-full right-0 mb-2 py-1 rounded-xl overflow-hidden shadow-2xl border border-white/10" style={{ background: 'rgba(15,15,15,0.95)', backdropFilter: 'blur(12px)' }}>
+                          {SPEED_OPTIONS.map(rate => (
+                            <button
+                              key={rate}
+                              onClick={() => handlePlaybackRate(rate)}
+                              className={`w-full px-4 py-2 text-left text-xs font-medium transition-colors ${
+                                playbackRate === rate ? 'text-violet-400 bg-violet-600/20' : 'text-white hover:bg-white/10'
+                              }`}
+                            >
+                              {rate === 1 ? '1× Normal' : `${rate}×`}
+                            </button>
+                          ))}
+                        </div>
+                      )}
                     </div>
 
                     {/* Fullscreen Trigger */}
@@ -887,6 +1031,52 @@ export default function WatchPage() {
           )}
         </aside>
       </div>
+
+      {/* Keyboard Shortcuts Help Button */}
+      <button
+        onClick={() => setShowShortcuts(v => !v)}
+        className="fixed bottom-6 right-6 z-40 w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold shadow-lg border transition-all hover:scale-110"
+        style={{ background: 'var(--bg-card)', borderColor: 'var(--border)', color: 'var(--text-secondary)' }}
+        title="Keyboard shortcuts (?)"
+      >
+        ?
+      </button>
+
+      {/* Keyboard Shortcuts Modal */}
+      {showShortcuts && (
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4" onClick={() => setShowShortcuts(false)}>
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
+          <div
+            className="relative w-full max-w-md rounded-2xl shadow-2xl p-6"
+            style={{ background: 'var(--bg-card)', border: '1px solid var(--border)' }}
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between mb-5">
+              <h3 className="text-base font-bold" style={{ color: 'var(--text-primary)' }}>Keyboard Shortcuts</h3>
+              <button onClick={() => setShowShortcuts(false)} style={{ color: 'var(--text-muted)' }}>
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              {([
+                ['Space', 'Play / Pause'],
+                ['←', 'Rewind 5s'],
+                ['→', 'Forward 5s'],
+                ['↑', 'Volume Up'],
+                ['↓', 'Volume Down'],
+                ['M', 'Mute / Unmute'],
+                ['F', 'Fullscreen'],
+                ['?', 'Show shortcuts'],
+              ] as [string, string][]).map(([key, label]) => (
+                <div key={key} className="flex items-center gap-3">
+                  <kbd className="px-2 py-1 rounded-md text-xs font-bold border" style={{ background: 'var(--bg-hover)', borderColor: 'var(--border)', color: 'var(--text-primary)', fontFamily: 'monospace', minWidth: '36px', textAlign: 'center' }}>{key}</kbd>
+                  <span className="text-xs" style={{ color: 'var(--text-secondary)' }}>{label}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Delete confirm modal */}
       {showDeleteConfirm && (

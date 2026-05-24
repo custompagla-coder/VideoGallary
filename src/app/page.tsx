@@ -3,16 +3,20 @@
 export const dynamic = 'force-dynamic';
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
+import Link from 'next/link';
+import Image from 'next/image';
 import { Video as VideoIcon } from 'lucide-react';
 import Navbar from '@/components/Navbar';
 import VideoCard from '@/components/VideoCard';
 import { supabase, Video, Category } from '@/lib/supabase';
 import { Toaster } from 'react-hot-toast';
+import { formatDuration } from '@/utils/thumbnailGenerator';
 
 const PAGE_SIZE = 12;
 
 export default function HomePage() {
   const [videos, setVideos] = useState<Video[]>([]);
+  const [pinnedVideos, setPinnedVideos] = useState<Video[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -29,10 +33,12 @@ export default function HomePage() {
         supabase
           .from('videos')
           .select('*, category:categories(id, name, slug, color)')
+          .or('status.eq.published,status.is.null')
           .order('created_at', { ascending: false }),
         supabase.from('categories').select('*').order('name'),
       ]);
       if (vErr) throw new Error(vErr.message);
+      setPinnedVideos((vids || []).filter((v: Video) => v.is_pinned));
       setVideos(vids || []);
       setCategories(cats || []);
     } catch (err) {
@@ -91,6 +97,53 @@ export default function HomePage() {
       {(!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) && (
         <div className="bg-yellow-500/10 border-b border-yellow-500/20 text-yellow-400 py-3 px-4 text-center text-sm font-medium">
           ⚠️ <span className="font-semibold text-white">Missing Supabase credentials:</span> Please add <code className="bg-black/30 px-1.5 py-0.5 rounded text-fuchsia-300">NEXT_PUBLIC_SUPABASE_URL</code> and <code className="bg-black/30 px-1.5 py-0.5 rounded text-fuchsia-300">NEXT_PUBLIC_SUPABASE_ANON_KEY</code> to your Vercel Environment Variables to load videos.
+        </div>
+      )}
+
+      {/* Featured / Pinned Videos */}
+      {pinnedVideos.length > 0 && (
+        <div className="border-b" style={{ borderColor: 'rgba(245,158,11,0.2)', background: 'linear-gradient(135deg, rgba(245,158,11,0.04), rgba(139,92,246,0.04))' }}>
+          <div className="max-w-[1500px] mx-auto px-4 sm:px-6 py-4">
+            <div className="flex items-center gap-2 mb-3">
+              <span className="text-sm font-bold" style={{ color: '#f59e0b' }}>⭐ Featured</span>
+              <span className="text-xs" style={{ color: 'var(--text-muted)' }}>Pinned by admin</span>
+            </div>
+            <div className="flex gap-4 overflow-x-auto pb-2 scrollbar-none">
+              {pinnedVideos.map(video => (
+                <Link key={video.id} href={`/watch/${video.id}`} className="group shrink-0 w-56">
+                  <div
+                    className="relative aspect-video rounded-xl overflow-hidden mb-2"
+                    style={{ border: '1.5px solid rgba(245,158,11,0.4)', boxShadow: '0 0 16px rgba(245,158,11,0.15)' }}
+                  >
+                    <Image
+                      src={video.thumbnail_url}
+                      alt={video.title}
+                      fill
+                      className="object-cover transition-transform duration-300 group-hover:scale-105"
+                      sizes="224px"
+                    />
+                    <div
+                      className="absolute top-2 left-2 px-2 py-0.5 rounded-full text-[10px] font-bold"
+                      style={{ background: 'rgba(245,158,11,0.9)', color: '#000' }}
+                    >
+                      ⭐ FEATURED
+                    </div>
+                    {video.duration > 0 && (
+                      <div className="absolute bottom-1.5 right-1.5 px-1.5 py-0.5 bg-black/90 rounded text-[10px] font-bold text-white">
+                        {formatDuration(video.duration)}
+                      </div>
+                    )}
+                  </div>
+                  <h3 className="text-sm font-semibold line-clamp-2" style={{ color: 'var(--text-primary)' }}>
+                    {video.title}
+                  </h3>
+                  <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>
+                    {video.views > 0 ? `${video.views} views` : 'No views yet'}
+                  </p>
+                </Link>
+              ))}
+            </div>
+          </div>
         </div>
       )}
 

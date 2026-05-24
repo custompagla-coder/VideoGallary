@@ -1,5 +1,6 @@
 'use client';
 
+import { useState, useEffect, useRef } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { Tv2 } from 'lucide-react';
@@ -37,14 +38,66 @@ export default function VideoCard({ video }: VideoCardProps) {
   const duration = formatDuration(video.duration);
   const cat = video.category;
 
+  // Phase 1D – fade-in when card enters viewport
+  const cardRef = useRef<HTMLAnchorElement>(null);
+  const [isVisible, setIsVisible] = useState(false);
+
+  // Phase 2B – watch progress bar
+  const [watchProgress, setWatchProgress] = useState(0);
+
+  // IntersectionObserver – one-shot fade-in
+  useEffect(() => {
+    const el = cardRef.current;
+    if (!el) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting) {
+          setIsVisible(true);
+          observer.disconnect();
+        }
+      },
+      { threshold: 0.1 }
+    );
+
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
+
+  // Read resume position from localStorage and compute progress %
+  useEffect(() => {
+    if (!video.duration) return;
+    const saved = localStorage.getItem(`dwx-resume-${video.id}`);
+    if (saved) {
+      const pct = (parseInt(saved, 10) / video.duration) * 100;
+      setWatchProgress(pct);
+    }
+  }, [video.id, video.duration]);
+
   return (
-    <Link href={`/watch/${video.id}`} className="group block">
+    <Link
+      href={`/watch/${video.id}`}
+      ref={cardRef}
+      className="group block"
+      style={{
+        opacity: isVisible ? 1 : 0,
+        transform: isVisible ? 'translateY(0)' : 'translateY(10px)',
+        transition: 'opacity 0.4s ease, transform 0.4s ease',
+      }}
+    >
       {/* Thumbnail */}
-      <div className="relative aspect-video rounded-xl overflow-hidden mb-3" style={{ background: 'var(--bg-card)' }}>
+      <div
+        className="video-card-thumb relative aspect-video rounded-xl overflow-hidden mb-3"
+        style={{
+          background: 'var(--bg-card)',
+          '--glow-color': cat ? cat.color : '#7c3aed',
+        } as React.CSSProperties}
+      >
         <Image
           src={video.thumbnail_url}
           alt={video.title}
           fill
+          loading="lazy"
           className="object-cover transition-transform duration-300 group-hover:scale-105"
           sizes="(max-width: 640px) 100vw, (max-width: 768px) 50vw, (max-width: 1024px) 33vw, 25vw"
         />
@@ -67,6 +120,22 @@ export default function VideoCard({ video }: VideoCardProps) {
         {cat && (
           <div className="absolute top-2 left-2 flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold text-white" style={{ background: cat.color + 'cc' }}>
             {cat.name}
+          </div>
+        )}
+
+        {/* Phase 2B – Watch progress bar */}
+        {watchProgress > 0 && (
+          <div
+            className="absolute bottom-0 left-0 right-0 h-1 rounded-b-xl overflow-hidden"
+            style={{ background: 'rgba(0,0,0,0.5)' }}
+          >
+            <div
+              className="h-full rounded-b-xl"
+              style={{
+                width: `${Math.min(100, watchProgress)}%`,
+                background: 'linear-gradient(to right, #7c3aed, #d946ef)',
+              }}
+            />
           </div>
         )}
       </div>
