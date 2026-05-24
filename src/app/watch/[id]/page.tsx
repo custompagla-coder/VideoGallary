@@ -8,7 +8,7 @@ import {
   ArrowLeft, ThumbsUp, Share2, MoreHorizontal,
   Eye, Calendar, Tv2, Trash2, Pencil, Check, X, Shield,
   Play, Pause, Volume2, VolumeX, Maximize, Minimize, RotateCcw, RotateCw,
-  Loader2, ChevronDown,
+  Loader2, ChevronDown, Layout, Monitor,
 } from 'lucide-react';
 import { supabase, Video, Category } from '@/lib/supabase';
 import Navbar from '@/components/Navbar';
@@ -98,6 +98,10 @@ export default function WatchPage() {
   // Resume playback
   const [resumeTime, setResumeTime] = useState<number | null>(null);
   const [showResume, setShowResume] = useState(false);
+
+  // Theater Mode & Ambient Glow
+  const [isTheaterMode, setIsTheaterMode] = useState(false);
+  const glowRef = useRef<HTMLDivElement>(null);
 
   const SPEED_OPTIONS = [0.5, 0.75, 1, 1.25, 1.5, 2];
   const RESUME_KEY = (videoId: string) => `dwx-resume-${videoId}`;
@@ -265,6 +269,9 @@ export default function WatchPage() {
         handleVolumeToggle();
       } else if (e.key === 'f' || e.key === 'F') {
         handleFullscreenToggle();
+      } else if (e.key === 't' || e.key === 'T') {
+        e.preventDefault();
+        setIsTheaterMode(v => !v);
       } else if (e.key === '?') {
         setShowShortcuts(v => !v);
       }
@@ -314,6 +321,46 @@ export default function WatchPage() {
 
   useEffect(() => { fetchData(); }, [fetchData]);
   useEffect(() => { setLiked(getLiked().has(id)); }, [id]);
+
+  // Ambient backlighting glow loop
+  useEffect(() => {
+    if (!isPlaying || !videoRef.current || !glowRef.current) return;
+    const video = videoRef.current;
+    const glowDiv = glowRef.current;
+
+    // Create a dynamic 16x9 background average color sampler canvas
+    const canvas = document.createElement('canvas');
+    canvas.width = 16;
+    canvas.height = 9;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    let active = true;
+    let lastTime = 0;
+
+    function updateGlow(timestamp: number) {
+      if (!active) return;
+      
+      // Throttle to 100ms updates to keep performance footprint completely negligible
+      if (timestamp - lastTime >= 100) {
+        try {
+          ctx!.drawImage(video, 0, 0, 16, 9);
+          const dataUrl = canvas.toDataURL('image/jpeg', 0.4);
+          glowDiv.style.backgroundImage = `url(${dataUrl})`;
+          lastTime = timestamp;
+        } catch (e) {
+          // Suppress canvas security taint errors
+        }
+      }
+      requestAnimationFrame(updateGlow);
+    }
+
+    const animFrame = requestAnimationFrame(updateGlow);
+    return () => {
+      active = false;
+      cancelAnimationFrame(animFrame);
+    };
+  }, [isPlaying, video?.id]);
 
   // Re-fetch watch page if user comes back to a blank tab
   useEffect(() => {
@@ -527,10 +574,10 @@ export default function WatchPage() {
         </div>
       )}
 
-      <div className="max-w-[1500px] mx-auto px-3 sm:px-6 py-4 flex flex-col lg:flex-row gap-6">
+      <div className="max-w-[1500px] mx-auto px-3 sm:px-6 py-4 grid grid-cols-1 lg:grid-cols-3 gap-6">
 
-        {/* ── LEFT ── */}
-        <div className="flex-1 min-w-0">
+        {/* ── PLAYER & HEADER COLUMN ── */}
+        <div className={`min-w-0 transition-all duration-300 ${isTheaterMode ? 'lg:col-span-3' : 'lg:col-span-2'}`}>
           <button onClick={() => router.back()} className="flex items-center gap-2 text-sm mb-3 lg:hidden transition-colors" style={{ color: 'var(--text-secondary)' }}>
             <ArrowLeft className="w-4 h-4" /> Back
           </button>
@@ -557,24 +604,32 @@ export default function WatchPage() {
             </div>
           )}
 
-          {/* Custom Video Player with Anti-Download Restraints */}
-          <div 
-            ref={playerContainerRef}
-            className="relative bg-black rounded-xl overflow-hidden aspect-video shadow-2xl group select-none"
-            onMouseMove={resetControlsTimeout}
-            onMouseLeave={() => {
-              if (isPlaying) setShowControls(false);
-            }}
-            onContextMenu={e => e.preventDefault()}
-          >
-            {/* Native Video Element */}
-            <video
-              ref={videoRef}
-              key={video.id}
-              src={video.video_url}
-              autoPlay
-              className="w-full h-full cursor-pointer"
-              poster={video.thumbnail_url}
+          {/* Custom Video Player with Anti-Download Restraints & Ambient Glow Wrapper */}
+          <div className="relative aspect-video">
+            {/* Ambient Glow Backdrop */}
+            <div 
+              ref={glowRef}
+              className="absolute inset-0 -z-10 opacity-70 filter blur-[80px] pointer-events-none scale-[1.08] transition-all duration-[800ms] bg-cover bg-center rounded-xl animate-pulse"
+            />
+            {/* Player Container */}
+            <div 
+              ref={playerContainerRef}
+              className="relative w-full h-full bg-black rounded-xl overflow-hidden shadow-2xl group select-none"
+              onMouseMove={resetControlsTimeout}
+              onMouseLeave={() => {
+                if (isPlaying) setShowControls(false);
+              }}
+              onContextMenu={e => e.preventDefault()}
+            >
+              {/* Native Video Element */}
+              <video
+                ref={videoRef}
+                key={video.id}
+                src={video.video_url}
+                autoPlay
+                crossOrigin="anonymous"
+                className="w-full h-full cursor-pointer"
+                poster={video.thumbnail_url}
               playsInline
               controlsList="nodownload"
               onClick={handlePlayPause}
@@ -735,6 +790,15 @@ export default function WatchPage() {
                       )}
                     </div>
 
+                    {/* Theater Mode Trigger */}
+                    <button
+                      onClick={() => setIsTheaterMode(prev => !prev)}
+                      className="hover:text-violet-400 transition-colors"
+                      title="Theater mode (T)"
+                    >
+                      {isTheaterMode ? <Layout className="w-4 h-4 text-violet-400" /> : <Layout className="w-4 h-4" />}
+                    </button>
+
                     {/* Fullscreen Trigger */}
                     <button onClick={handleFullscreenToggle} className="hover:text-violet-400 transition-colors">
                       {isFullscreen ? (
@@ -748,6 +812,11 @@ export default function WatchPage() {
               </div>
             </div>
           </div>
+          </div>
+          </div>
+
+          {/* Details & Comments Section Column */}
+          <div className="lg:col-span-2 min-w-0">
 
           {/* Admin Edit Block or Normal Title/Category block */}
           {isEditing && isAdmin ? (
@@ -945,10 +1014,10 @@ export default function WatchPage() {
           <div className="mt-4 p-4 rounded-xl" style={{ background: 'var(--bg-card)' }}>
             <CommentsSection videoId={id} />
           </div>
-        </div>
+          </div>
 
         {/* ── RIGHT: Sidebar ── */}
-        <aside className="w-full lg:w-[380px] shrink-0">
+        <aside className={`w-full shrink-0 transition-all duration-300 ${isTheaterMode ? 'lg:col-span-1 lg:mt-0' : 'lg:col-span-1 lg:row-span-2'}`}>
           <div className="flex flex-col gap-3 mb-4">
             <div className="flex items-center justify-between">
               <h2 className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>Up next</h2>
@@ -1096,6 +1165,7 @@ export default function WatchPage() {
                 ['↓', 'Volume Down'],
                 ['M', 'Mute / Unmute'],
                 ['F', 'Fullscreen'],
+                ['T', 'Theater Mode'],
                 ['?', 'Show shortcuts'],
               ] as [string, string][]).map(([key, label]) => (
                 <div key={key} className="flex items-center gap-3">

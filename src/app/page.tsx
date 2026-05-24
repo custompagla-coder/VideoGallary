@@ -2,9 +2,10 @@
 
 export const dynamic = 'force-dynamic';
 
-import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef, Suspense } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
+import { useSearchParams } from 'next/navigation';
 import { Video as VideoIcon } from 'lucide-react';
 import Navbar from '@/components/Navbar';
 import VideoCard from '@/components/VideoCard';
@@ -14,7 +15,10 @@ import { formatDuration } from '@/utils/thumbnailGenerator';
 
 const PAGE_SIZE = 12;
 
-export default function HomePage() {
+function HomePageContent() {
+  const searchParams = useSearchParams();
+  const urlSearchQuery = searchParams ? searchParams.get('search') : null;
+
   const [videos, setVideos] = useState<Video[]>([]);
   const [pinnedVideos, setPinnedVideos] = useState<Video[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
@@ -24,6 +28,13 @@ export default function HomePage() {
   const [activeCategorySlug, setActiveCategorySlug] = useState('all');
   const [sortBy, setSortBy] = useState<'newest' | 'views' | 'likes'>('newest');
   const [page, setPage] = useState(1);
+
+  // Sync search input with URL search parameters (e.g. when redirected from watch page)
+  useEffect(() => {
+    if (urlSearchQuery !== null) {
+      setSearch(urlSearchQuery);
+    }
+  }, [urlSearchQuery]);
 
   // Track retry attempts with a ref so we don't need it in useCallback deps
   const retryCount = useRef(0);
@@ -324,5 +335,13 @@ export default function HomePage() {
         )}
       </main>
     </div>
+  );
+}
+
+export default function HomePage() {
+  return (
+    <Suspense fallback={null}>
+      <HomePageContent />
+    </Suspense>
   );
 }

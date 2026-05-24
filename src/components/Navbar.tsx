@@ -1,14 +1,31 @@
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import Link from 'next/link';
+import Image from 'next/image';
+import { useRouter } from 'next/navigation';
 import { Upload, Search, Tv2, Bell, Sun, Moon, LayoutGrid, LogOut, Shield, ChevronDown, Flame, Clock, LayoutDashboard } from 'lucide-react';
 import UploadForm from './UploadForm';
 import AuthModal from './AuthModal';
 import CategoryManager from './CategoryManager';
 import { useTheme } from '@/context/ThemeContext';
 import { useAuth } from '@/context/AuthContext';
-import { supabase } from '@/lib/supabase';
+import { supabase, Video } from '@/lib/supabase';
+import { formatDuration } from '@/utils/thumbnailGenerator';
+
+function highlightText(text: string, query: string) {
+  if (!query.trim()) return text;
+  const parts = text.split(new RegExp(`(${query.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&')})`, 'gi'));
+  return (
+    <>
+      {parts.map((part, i) => 
+        part.toLowerCase() === query.toLowerCase() ? (
+          <mark key={i} className="bg-violet-500/30 text-violet-300 rounded px-0.5 font-bold" style={{ textShadow: '0 0 8px rgba(139,92,246,0.3)' }}>{part}</mark>
+        ) : part
+      )}
+    </>
+  );
+}
 
 interface NavbarProps {
   onRefresh: () => void;
@@ -32,6 +49,91 @@ export default function Navbar({ onRefresh, onSearch, searchValue = '' }: Navbar
 
   // Base virtual online count starting at 1207
   const displayedOnline = 1207 + (activeUsers > 1 ? activeUsers - 1 : 0);
+
+  const router = useRouter();
+
+  // Autocomplete Search Suggestions states
+  const [inputVal, setInputVal] = useState(searchValue || '');
+  const [suggestions, setSuggestions] = useState<Video[]>([]);
+  const [isFocused, setIsFocused] = useState(false);
+  const [activeSuggestionIdx, setActiveSuggestionIdx] = useState(-1);
+  const searchContainerRef = useRef<HTMLDivElement>(null);
+
+  // Sync with homepage changes
+  useEffect(() => {
+    setInputVal(searchValue || '');
+  }, [searchValue]);
+
+  // Debounced Supabase Autocomplete Search
+  useEffect(() => {
+    if (!inputVal.trim()) {
+      setSuggestions([]);
+      return;
+    }
+
+    const timer = setTimeout(async () => {
+      try {
+        const { data, error } = await supabase
+          .from('videos')
+          .select('*, category:categories(id, name, slug, color)')
+          .ilike('title', `%${inputVal}%`)
+          .limit(5);
+
+        if (!error && data) {
+          setSuggestions(data);
+        }
+      } catch (err) {
+        console.error('[Navbar Search] Suggestions error:', err);
+      }
+    }, 200);
+
+    return () => clearTimeout(timer);
+  }, [inputVal]);
+
+  const handleSearchSubmit = useCallback((queryStr = inputVal) => {
+    const q = queryStr.trim();
+    setIsFocused(false);
+    
+    if (onSearch) {
+      onSearch(q);
+    } else {
+      router.push(`/?search=${encodeURIComponent(q)}`);
+    }
+  }, [inputVal, onSearch, router]);
+
+  // Click outside to close dropdown
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (searchContainerRef.current && !searchContainerRef.current.contains(e.target as Node)) {
+        setIsFocused(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const handleSearchKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      setActiveSuggestionIdx(prev => 
+        prev < suggestions.length - 1 ? prev + 1 : prev
+      );
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      setActiveSuggestionIdx(prev => (prev > -1 ? prev - 1 : -1));
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      if (activeSuggestionIdx > -1 && suggestions[activeSuggestionIdx]) {
+        const selected = suggestions[activeSuggestionIdx];
+        setIsFocused(false);
+        router.push(`/watch/${selected.id}`);
+      } else {
+        handleSearchSubmit();
+      }
+    } else if (e.key === 'Escape') {
+      setIsFocused(false);
+    }
+  };
 
   // Realtime Presence Visitor Tracking (works for both logged in and logged out users)
   useEffect(() => {
@@ -123,24 +225,84 @@ export default function Navbar({ onRefresh, onSearch, searchValue = '' }: Navbar
             <span>Trending</span>
           </Link>
 
-          {/* Search bar */}
-          {onSearch && (
-            <div className="flex-1 max-w-xl hidden sm:flex items-center">
-              <div className="flex w-full">
-                <input
-                  type="text"
-                  value={searchValue}
-                  onChange={e => onSearch(e.target.value)}
-                  placeholder="Search videos, tags..."
-                  className="w-full px-4 py-2 text-sm rounded-l-full border focus:outline-none transition-colors"
-                  style={{ background: 'var(--bg-input)', borderColor: 'var(--border)', color: 'var(--text-primary)' }}
-                />
-                <button className="px-5 py-2 rounded-r-full border border-l-0 transition-colors" style={{ background: 'var(--bg-hover)', borderColor: 'var(--border)', color: 'var(--text-secondary)' }}>
-                  <Search className="w-4 h-4" />
-                </button>
-              </div>
+          {/* Search bar (Visible on all routes, supports autocomplete dropdown) */}
+          <div className="flex-1 max-w-xl hidden sm:flex items-center relative" ref={searchContainerRef}>
+            <div className="flex w-full">
+              <input
+                type="text"
+                value={inputVal}
+                onChange={e => {
+                  setInputVal(e.target.value);
+                  setIsFocused(true);
+                  setActiveSuggestionIdx(-1);
+                  if (onSearch) onSearch(e.target.value);
+                }}
+                onFocus={() => setIsFocused(true)}
+                onKeyDown={handleSearchKeyDown}
+                placeholder="Search videos, tags..."
+                className="w-full px-4 py-2 text-sm rounded-l-full border focus:outline-none transition-colors"
+                style={{ background: 'var(--bg-input)', borderColor: 'var(--border)', color: 'var(--text-primary)' }}
+              />
+              <button 
+                onClick={() => handleSearchSubmit()}
+                className="px-5 py-2 rounded-r-full border border-l-0 transition-colors" 
+                style={{ background: 'var(--bg-hover)', borderColor: 'var(--border)', color: 'var(--text-secondary)' }}
+              >
+                <Search className="w-4 h-4" />
+              </button>
             </div>
-          )}
+
+            {/* Glassmorphic Autocomplete Suggestions Dropdown */}
+            {isFocused && suggestions.length > 0 && (
+              <div 
+                className="absolute left-0 right-0 top-full mt-2 rounded-2xl shadow-2xl overflow-hidden z-50 border border-white/10"
+                style={{ background: 'rgba(15, 15, 15, 0.95)', backdropFilter: 'blur(16px)' }}
+              >
+                <div className="py-2">
+                  {suggestions.map((video, idx) => (
+                    <Link
+                      key={video.id}
+                      href={`/watch/${video.id}`}
+                      onClick={() => setIsFocused(false)}
+                      className={`flex items-center gap-3 px-4 py-2.5 transition-colors cursor-pointer text-left ${
+                        activeSuggestionIdx === idx ? 'bg-white/10' : 'hover:bg-white/5'
+                      }`}
+                    >
+                      {/* Mini Thumbnail */}
+                      <div className="relative w-16 aspect-video rounded-lg overflow-hidden bg-black/40 shrink-0 border border-white/5">
+                        <Image src={video.thumbnail_url} alt={video.title} fill className="object-cover" sizes="64px" />
+                        {video.duration > 0 && (
+                          <div className="absolute bottom-0.5 right-0.5 px-1 bg-black/80 rounded text-[8px] font-bold text-white">
+                            {formatDuration(video.duration)}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Info & Highlighted Term */}
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium truncate" style={{ color: 'var(--text-primary)' }}>
+                          {highlightText(video.title, inputVal)}
+                        </p>
+                        <p className="text-[10px] mt-0.5" style={{ color: 'var(--text-muted)' }}>
+                          DarkWebXYoruWeb
+                        </p>
+                      </div>
+
+                      {/* Category Pill */}
+                      {video.category && (
+                        <span 
+                          className="px-2 py-0.5 rounded-full text-[9px] font-bold text-white shrink-0"
+                          style={{ background: video.category.color }}
+                        >
+                          {video.category.name}
+                        </span>
+                      )}
+                    </Link>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
 
           {/* Right actions */}
           <div className="flex items-center gap-1.5 sm:gap-2.5 shrink-0">
