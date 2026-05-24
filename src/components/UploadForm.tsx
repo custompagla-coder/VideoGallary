@@ -144,7 +144,7 @@ export default function UploadForm({ onClose, onSuccess }: UploadFormProps) {
 
         // Save to Database
         setStep('saving');
-        console.log(`[UploadForm] Saving video ${i + 1}/${videoFiles.length} details to Supabase...`, {
+        console.log(`[UploadForm] Saving video ${i + 1}/${videoFiles.length} details to server proxy...`, {
           title: videoTitle,
           video_url: videoUrl,
           thumbnail_url: thumbnailUrl,
@@ -153,31 +153,31 @@ export default function UploadForm({ onClose, onSuccess }: UploadFormProps) {
           category_id: categoryId || null,
         });
 
-        const insertQuery = supabase.from('videos').insert({
-          title: videoTitle,
-          video_url: videoUrl,
-          thumbnail_url: thumbnailUrl,
-          tags,
-          duration,
-          views: 0,
-          likes: 0,
-          category_id: categoryId || null,
+        const savePromise = fetch('/api/videos', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            title: videoTitle,
+            video_url: videoUrl,
+            thumbnail_url: thumbnailUrl,
+            tags,
+            duration,
+            category_id: categoryId || null,
+          }),
+        }).then(async (res) => {
+          const resData = await res.json();
+          if (!res.ok) throw new Error(resData.error || 'Server failed to save video');
+          return resData;
         });
 
-        // 20 seconds timeout to prevent hanging if there's a CORS / Network block
-        const response = await withTimeout(
-          insertQuery,
+        // 20 seconds timeout to prevent hanging if there's a network block
+        await withTimeout(
+          savePromise,
           20000,
-          'Database save timed out after 20 seconds. This is usually caused by Brave Shields, an adblocker (e.g. uBlock Origin), or a network firewall blocking outgoing connections to Supabase. Please check your browser developer console (F12 -> Console) for blocked/failed requests.'
-        ) as any;
+          'Database save timed out after 20 seconds. Please check your network connection.'
+        );
 
-        const { error } = response;
-        if (error) {
-          console.error('[UploadForm] Supabase database insertion failed:', error);
-          throw new Error(error.message);
-        }
-
-        console.log('[UploadForm] Supabase database insertion succeeded!');
+        console.log('[UploadForm] Database insertion succeeded!');
       }
       
       setStep('done');
