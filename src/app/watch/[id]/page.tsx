@@ -279,12 +279,19 @@ export default function WatchPage() {
     if (!isRetry) watchRetry.current = 0;
     setLoading(true);
     try {
-      const [{ data: vid, error: vidErr }, { data: all }, { data: cats }] = await Promise.all([
+      const [
+        { data: vid, error: vidErr },
+        { data: all, error: allErr },
+        { data: cats, error: catErr }
+      ] = await Promise.all([
         supabase.from('videos').select('*, category:categories(id,name,slug,color)').eq('id', id).single(),
         supabase.from('videos').select('*, category:categories(id,name,slug,color)').order('created_at', { ascending: false }),
         supabase.from('categories').select('*').order('name'),
       ]);
       if (vidErr) throw new Error(vidErr.message);
+      if (allErr) throw new Error(allErr.message);
+      if (catErr) throw new Error(catErr.message);
+
       if (vid) {
         setVideo(vid);
         setLocalLikes(vid.likes ?? 0);

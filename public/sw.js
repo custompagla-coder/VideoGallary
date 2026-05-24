@@ -22,6 +22,14 @@ self.addEventListener('fetch', event => {
   if (event.request.method !== 'GET') return;
   if (!event.request.url.startsWith(self.location.origin)) return;
   event.respondWith(
-    fetch(event.request).catch(() => caches.match(event.request) || caches.match('/'))
+    fetch(event.request).catch(() => {
+      return caches.match(event.request).then(cachedResponse => {
+        if (cachedResponse) return cachedResponse;
+        if (event.request.mode === 'navigate') {
+          return caches.match('/');
+        }
+        return Promise.reject(new Error('Network error and asset not cached'));
+      });
+    })
   );
 });

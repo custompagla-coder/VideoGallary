@@ -139,6 +139,10 @@ if (typeof window !== 'undefined') {
 }
 
 export const supabase = (url && key)
-  ? createClient(url, key)
+  ? createClient(url, key, {
+      global: {
+        fetch: (url, options) => fetch(url, { ...options, cache: 'no-store' }),
+      },
+    })
   : (createDummyProxy() as unknown as SupabaseClient);
 

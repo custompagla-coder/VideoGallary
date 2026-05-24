@@ -34,7 +34,7 @@ export default function HomePage() {
       setLoading(true);
       setError(null);
 
-      const [{ data: vids, error: vErr }, { data: cats }] = await Promise.all([
+      const [{ data: vids, error: vErr }, { data: cats, error: cErr }] = await Promise.all([
         supabase
           .from('videos')
           .select('*, category:categories(id, name, slug, color)')
@@ -43,6 +43,7 @@ export default function HomePage() {
       ]);
 
       if (vErr) throw new Error(vErr.message);
+      if (cErr) throw new Error(cErr.message);
 
       const allVids = vids || [];
       setPinnedVideos(allVids.filter((v: Video) => v.is_pinned));
