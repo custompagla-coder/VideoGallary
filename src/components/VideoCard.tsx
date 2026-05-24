@@ -3,12 +3,15 @@
 import { useState, useEffect, useRef } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
-import { Tv2 } from 'lucide-react';
-import { Video } from '@/lib/supabase';
+import { Tv2, Pin } from 'lucide-react';
+import { Video, supabase } from '@/lib/supabase';
 import { formatDuration } from '@/utils/thumbnailGenerator';
+import { useAuth } from '@/context/AuthContext';
+import toast from 'react-hot-toast';
 
 interface VideoCardProps {
   video: Video;
+  onRefresh?: () => void;
 }
 
 function timeAgo(dateStr: string): string {
@@ -34,9 +37,10 @@ function formatViews(n: number): string {
   return String(n);
 }
 
-export default function VideoCard({ video }: VideoCardProps) {
+export default function VideoCard({ video, onRefresh }: VideoCardProps) {
   const duration = formatDuration(video.duration);
   const cat = video.category;
+  const { isAdmin } = useAuth();
 
   // Phase 1D – fade-in when card enters viewport
   const cardRef = useRef<HTMLAnchorElement>(null);
@@ -121,6 +125,36 @@ export default function VideoCard({ video }: VideoCardProps) {
           <div className="absolute top-2 left-2 flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold text-white" style={{ background: cat.color + 'cc' }}>
             {cat.name}
           </div>
+        )}
+
+        {/* Admin Pinned / Featured Toggle */}
+        {isAdmin && (
+          <button
+            onClick={async (e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              const nextPinned = !video.is_pinned;
+              try {
+                const { error } = await supabase
+                  .from('videos')
+                  .update({ is_pinned: nextPinned })
+                  .eq('id', video.id);
+                if (error) throw error;
+                toast.success(nextPinned ? '📌 Video featured on home page!' : 'Video unfeatured');
+                if (onRefresh) onRefresh();
+              } catch (err) {
+                toast.error(err instanceof Error ? err.message : 'Failed to update');
+              }
+            }}
+            className="absolute top-2 right-2 z-10 p-1.5 rounded-full backdrop-blur-md border border-white/20 transition-all hover:scale-110 active:scale-95"
+            style={{
+              background: video.is_pinned ? 'rgba(245, 158, 11, 0.25)' : 'rgba(0,0,0,0.6)',
+              color: video.is_pinned ? '#f59e0b' : 'rgba(255,255,255,0.7)',
+            }}
+            title={video.is_pinned ? 'Unfeature video' : 'Feature video'}
+          >
+            <Pin className="w-3.5 h-3.5" style={{ fill: video.is_pinned ? '#f59e0b' : 'none' }} />
+          </button>
         )}
 
         {/* Phase 2B – Watch progress bar */}

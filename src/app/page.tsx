@@ -306,7 +306,7 @@ export default function HomePage() {
               </p>
             )}
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-x-4 gap-y-8">
-              {paginated.map(video => <VideoCard key={video.id} video={video} />)}
+              {paginated.map(video => <VideoCard key={video.id} video={video} onRefresh={fetchData} />)}
             </div>
 
             {hasMore && (
