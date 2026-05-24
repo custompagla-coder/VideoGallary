@@ -30,6 +30,9 @@ export default function Navbar({ onRefresh, onSearch, searchValue = '' }: Navbar
   const userMenuRef = useRef<HTMLDivElement>(null);
   const [activeUsers, setActiveUsers] = useState(1);
 
+  // Base virtual online count starting at 1207
+  const displayedOnline = 1207 + (activeUsers > 1 ? activeUsers - 1 : 0);
+
   // Realtime Presence Visitor Tracking (works for both logged in and logged out users)
   useEffect(() => {
     let channel: any;
@@ -146,14 +149,14 @@ export default function Navbar({ onRefresh, onSearch, searchValue = '' }: Navbar
             <div 
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold border select-none transition-all hover:scale-105"
               style={{ background: 'var(--bg-hover)', borderColor: 'var(--border)', color: 'var(--text-secondary)' }}
-              title={`${activeUsers} active visitor${activeUsers !== 1 ? 's' : ''} on the website`}
+              title={`${activeUsers} active visitor${activeUsers !== 1 ? 's' : ''} on the website (Base: 1207)`}
             >
               <span className="relative flex h-2 w-2">
                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
                 <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
               </span>
               <span className="bg-gradient-to-r from-emerald-400 to-teal-400 bg-clip-text text-transparent font-bold">
-                {activeUsers}
+                {displayedOnline}
               </span>
               <span className="text-[10px]" style={{ color: 'var(--text-muted)' }}>online</span>
             </div>
